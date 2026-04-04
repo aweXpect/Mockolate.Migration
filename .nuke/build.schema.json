@@ -24,11 +24,6 @@
     "ExecutableTarget": {
       "type": "string",
       "enum": [
-        "ApiChecks",
-        "BenchmarkComment",
-        "BenchmarkDotNet",
-        "BenchmarkResult",
-        "Benchmarks",
         "CalculateNugetVersion",
         "Clean",
         "CodeAnalysis",
@@ -37,10 +32,6 @@
         "CodeCoverage",
         "Compile",
         "DotNetUnitTests",
-        "MutationComment",
-        "MutationTestDashboard",
-        "MutationTestExecution",
-        "MutationTests",
         "Pack",
         "Restore",
         "UnitTests",

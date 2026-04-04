@@ -23,7 +23,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 
 		SyntaxNode? root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
 
-		if (root is not CompilationUnitSyntax compilationUnit)
+		if (root is not CompilationUnitSyntax)
 		{
 			return document;
 		}
