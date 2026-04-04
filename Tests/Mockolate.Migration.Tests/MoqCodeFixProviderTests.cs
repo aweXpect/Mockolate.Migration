@@ -69,6 +69,39 @@ public class MoqCodeFixProviderTests
 			""");
 
 	[Fact]
+	public async Task NewMockExplicit_WithObjectAccess_RemovesObjectProperty()
+		=> await Verifier.VerifyCodeFixAsync(
+			"""
+			using Moq;
+
+			public interface IFoo { }
+
+			public class Tests
+			{
+				public void Test()
+				{
+					var mock = [|new Mock<IFoo>()|];
+					var obj = mock.Object;
+				}
+			}
+			""",
+			"""
+			using Moq;
+			using Mockolate;
+
+			public interface IFoo { }
+
+			public class Tests
+			{
+				public void Test()
+				{
+					var mock = IFoo.CreateMock();
+					var obj = mock;
+				}
+			}
+			""");
+
+	[Fact]
 	public async Task NewMockTargetTyped_IsReplaced()
 		=> await Verifier.VerifyCodeFixAsync(
 			"""
