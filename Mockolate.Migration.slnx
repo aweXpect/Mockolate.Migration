@@ -1,0 +1,39 @@
+<Solution>
+  <Folder Name="/Benchmarks/">
+    <Project Path="Benchmarks/Mockolate.Migration.Benchmarks/Mockolate.Migration.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/Pipeline/">
+    <Project Path="Pipeline/Build.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/Mockolate.Migration.Api.Tests/Mockolate.Migration.Api.Tests.csproj" />
+    <Project Path="Tests/Mockolate.Migration.Tests/Mockolate.Migration.Tests.csproj" />
+  </Folder>
+  <Folder Name="/_/">
+    <File Path=".editorconfig" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="CODE_OF_CONDUCT.md" />
+    <File Path="CONTRIBUTING.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+    <File Path="Mockolate.Migration.sln.DotSettings" />
+    <File Path="nuget.config" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/_/.github/" />
+  <Folder Name="/_/.github/workflows/">
+    <File Path=".github/workflows/build.yml" />
+    <File Path=".github/workflows/ci-analysis.yml" />
+    <File Path=".github/workflows/ci.yml" />
+  </Folder>
+  <Folder Name="/_/Source/">
+    <File Path="Source/Directory.Build.props" />
+  </Folder>
+  <Folder Name="/_/Tests/">
+    <File Path="Tests/Directory.Build.props" />
+  </Folder>
+  <Project Path="Source/Mockolate.Migration/Mockolate.Migration.csproj" />
+</Solution>
