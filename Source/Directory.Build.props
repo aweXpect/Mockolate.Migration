@@ -4,9 +4,9 @@
 			Condition="Exists('$(MSBuildThisFileDirectory)/../Directory.Build.props')"/>
 
 	<PropertyGroup>
-		<Authors>aweXpect</Authors>
-		<Description>Template for extension projects for aweXpect.</Description>
-		<Copyright>Copyright (c) 2025 - $([System.DateTime]::Now.ToString('yyyy')) Valentin Breuß</Copyright>
+		<Authors>Mockolate</Authors>
+		<Description>Migration helpers from other mocking libraries.</Description>
+		<Copyright>Copyright (c) 2026 - $([System.DateTime]::Now.ToString('yyyy')) Valentin Breuß</Copyright>
 		<RepositoryUrl>https://github.com/aweXpect/Mockolate.Migration.git</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -15,7 +15,7 @@
 	</PropertyGroup>
 
 	<PropertyGroup>
-		<TargetFrameworks>net10.0;net8.0;netstandard2.0</TargetFrameworks>
+		<TargetFramework>netstandard2.0</TargetFramework>
 	</PropertyGroup>
 
 	<PropertyGroup>

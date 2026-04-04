@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<Description>Code fix providers for Mockolate to migrate from other mocking libraries.</Description>
+		<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+		<IsRoslynComponent>true</IsRoslynComponent>
+		<DevelopmentDependency>false</DevelopmentDependency>
+		<NoPackageAnalysis>true</NoPackageAnalysis>
+		<NoWarn>RS2003</NoWarn>
+		<EnableTrimAnalyzer>false</EnableTrimAnalyzer>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<RootNamespace>Mockolate.Migration.Analyzers</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis.Analyzers">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="Microsoft.CodeAnalysis.Common"/>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp"/>
+		<PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common"/>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Mockolate.Migration.Analyzers\Mockolate.Migration.Analyzers.csproj"/>
+	</ItemGroup>
+
+</Project>

@@ -1,7 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<ItemGroup>
+		<ProjectReference Include="..\..\Source\Mockolate.Migration.Analyzers.CodeFixers\Mockolate.Migration.Analyzers.CodeFixers.csproj" />
+		<ProjectReference Include="..\..\Source\Mockolate.Migration.Analyzers\Mockolate.Migration.Analyzers.csproj" />
 		<ProjectReference Include="..\..\Source\Mockolate.Migration\Mockolate.Migration.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.CodeAnalysis"/>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing"/>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing"/>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeRefactoring.Testing"/>
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces"/>
 	</ItemGroup>
 
 </Project>
