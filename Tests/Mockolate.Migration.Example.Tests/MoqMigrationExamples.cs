@@ -36,6 +36,9 @@ public class MoqMigrationExamples
 		int count = 1;
 		mock.Mock.Setup.GetCount().Returns(() => count);
 
+		/* ------ Async Methods ------ */
+		
+		mock.Mock.Setup.DoSomethingAsync().ReturnsAsync(true);
 
 		/* ------ Matching Argument ------ */
 		// any value
@@ -91,7 +94,10 @@ public class MoqMigrationExamples
 		int count = 1;
 		mock.Setup(foo => foo.GetCount()).Returns(() => count);
 
-
+		/* ------ Async Methods ------ */
+		
+		mock.Setup(foo => foo.DoSomethingAsync()).ReturnsAsync(true);
+		
 		/* ------ Matching Argument ------ */
 		// any value
 		mock.Setup(foo => foo.DoSomething(Moq.It.IsAny<string>())).Returns(true);

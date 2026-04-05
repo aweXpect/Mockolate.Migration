@@ -8,6 +8,41 @@ public partial class MoqCodeFixProviderTests
 	public sealed class SetupTests
 	{
 		[Fact]
+		public async Task AsyncMethod_WithReturnsAsync_MigratesSetup()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+				using System.Threading.Tasks;
+
+				public interface IFoo { Task<bool> DoSomethingAsync(); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.Setup(foo => foo.DoSomethingAsync()).ReturnsAsync(true);
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using System.Threading.Tasks;
+				using Mockolate;
+
+				public interface IFoo { Task<bool> DoSomethingAsync(); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Setup.DoSomethingAsync().ReturnsAsync(true);
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task Method_WithItIsIn_MigratedToIsOneOf()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
