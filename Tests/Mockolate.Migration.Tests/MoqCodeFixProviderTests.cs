@@ -69,6 +69,76 @@ public class MoqCodeFixProviderTests
 			""");
 
 	[Fact]
+	public async Task NewMockExplicit_WithGenericSetupCall_PreservesTypeArguments()
+		=> await Verifier.VerifyCodeFixAsync(
+			"""
+			using Moq;
+
+			public interface IFoo { bool Bar<T>(T x); }
+
+			public class Tests
+			{
+				public void Test()
+				{
+					var mock = [|new Mock<IFoo>()|];
+					mock.Setup(m => m.Bar<int>(It.IsAny<int>())).Returns(true);
+				}
+			}
+			""",
+			"""
+			using Moq;
+			using Mockolate;
+
+			public interface IFoo { bool Bar<T>(T x); }
+
+			public class Tests
+			{
+				public void Test()
+				{
+					var mock = IFoo.CreateMock();
+					mock.Mock.Setup.Bar<int>(It.IsAny<int>()).Returns(true);
+				}
+			}
+			""");
+
+	[Fact]
+	public async Task NewMockExplicit_WithNestedSetupCall_SetupIsNotRewritten()
+		=> await Verifier.VerifyCodeFixAsync(
+			"""
+			using Moq;
+
+			public interface IBar { bool Bar(string x); }
+			public interface IChild { IBar GrandChild { get; } }
+			public interface IFoo { IChild Child { get; } }
+
+			public class Tests
+			{
+				public void Test()
+				{
+					var mock = [|new Mock<IFoo>()|];
+					mock.Setup(m => m.Child.GrandChild.Bar(It.IsAny<string>())).Returns(true);
+				}
+			}
+			""",
+			"""
+			using Moq;
+			using Mockolate;
+
+			public interface IBar { bool Bar(string x); }
+			public interface IChild { IBar GrandChild { get; } }
+			public interface IFoo { IChild Child { get; } }
+
+			public class Tests
+			{
+				public void Test()
+				{
+					var mock = IFoo.CreateMock();
+					mock.Child.GrandChild.Mock.Bar(It.IsAny<string>()).Returns(true);
+				}
+			}
+			""");
+
+	[Fact]
 	public async Task NewMockExplicit_WithObjectAccess_RemovesObjectProperty()
 		=> await Verifier.VerifyCodeFixAsync(
 			"""
@@ -114,7 +184,7 @@ public class MoqCodeFixProviderTests
 				public void Test()
 				{
 					var mock = [|new Mock<IFoo>()|];
-					mock.Setup(m => m.Bar(Moq.It.IsAny<string>())).Returns(true);
+					mock.Setup(m => m.Bar(It.IsAny<string>())).Returns(true);
 				}
 			}
 			""",
@@ -147,7 +217,7 @@ public class MoqCodeFixProviderTests
 				public void Test()
 				{
 					var mock = [|new Mock<IFoo>()|];
-					mock.Setup(m => m.Bar(Moq.It.IsAny<string>(), Moq.It.IsAny<int>())).Returns(true);
+					mock.Setup(m => m.Bar(It.IsAny<string>(), It.IsAny<int>())).Returns(true);
 				}
 			}
 			""",
@@ -211,7 +281,7 @@ public class MoqCodeFixProviderTests
 				public void Test()
 				{
 					var mock = [|new Mock<IFoo>()|];
-					mock.Setup(m => m.Bar(Moq.It.IsIn<string>(new[] { "A", "B" }))).Returns(true);
+					mock.Setup(m => m.Bar(It.IsIn<string>(new[] { "A", "B" }))).Returns(true);
 				}
 			}
 			""",
@@ -244,7 +314,7 @@ public class MoqCodeFixProviderTests
 				public void Test()
 				{
 					var mock = [|new Mock<IFoo>()|];
-					mock.Setup(m => m.Bar(Moq.It.IsInRange<int>(1, 10, Range.Exclusive))).Returns(true);
+					mock.Setup(m => m.Bar(It.IsInRange<int>(1, 10, Range.Exclusive))).Returns(true);
 				}
 			}
 			""",
@@ -310,7 +380,9 @@ public class MoqCodeFixProviderTests
 				public void Test()
 				{
 					var mock = [|new Mock<IFoo>()|];
-					mock.Setup(m => m.Bar(Moq.It.Is<string>(s => s.StartsWith("A")))).Returns(true);
+					mock.Setup(m => m.Bar(It.Is<string>(s => s.StartsWith("A")))).Returns(true);
+					mock.Setup(m => m.Bar(It.Is<string>((x) => x.StartsWith("B"))))
+						.Returns(false);
 				}
 			}
 			""",
@@ -326,6 +398,8 @@ public class MoqCodeFixProviderTests
 				{
 					var mock = IFoo.CreateMock();
 					mock.Mock.Setup.Bar(It.Satisfies<string>(s => s.StartsWith("A"))).Returns(true);
+					mock.Mock.Setup.Bar(It.Satisfies<string>((x) => x.StartsWith("B")))
+						.Returns(false);
 				}
 			}
 			""");
@@ -343,7 +417,7 @@ public class MoqCodeFixProviderTests
 				public void Test()
 				{
 					var mock = [|new Mock<IFoo>()|];
-					mock.Setup(m => m.Bar(Moq.It.IsRegex("^A"))).Returns(true);
+					mock.Setup(m => m.Bar(It.IsRegex("^A"))).Returns(true);
 				}
 			}
 			""",
@@ -368,6 +442,7 @@ public class MoqCodeFixProviderTests
 		=> await Verifier.VerifyCodeFixAsync(
 			"""
 			using Moq;
+			using System;
 			using System.Collections.Generic;
 
 			public interface IFoo { bool Bar(string x); }
@@ -377,12 +452,13 @@ public class MoqCodeFixProviderTests
 				public void Test()
 				{
 					var mock = [|new Mock<IFoo>()|];
-					mock.Setup(m => m.Bar(Moq.It.Is<string>("hello", StringComparer.OrdinalIgnoreCase))).Returns(true);
+					mock.Setup(m => m.Bar(It.Is<string>("hello", StringComparer.OrdinalIgnoreCase))).Returns(true);
 				}
 			}
 			""",
 			"""
 			using Moq;
+			using System;
 			using System.Collections.Generic;
 			using Mockolate;
 
