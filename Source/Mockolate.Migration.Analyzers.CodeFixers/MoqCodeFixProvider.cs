@@ -59,7 +59,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 
 		nodesToReplace.AddRange(objectAccesses);
 
-		compilationUnit = (CompilationUnitSyntax)compilationUnit.ReplaceNodes(
+		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
 			(original, _) =>
 			{
