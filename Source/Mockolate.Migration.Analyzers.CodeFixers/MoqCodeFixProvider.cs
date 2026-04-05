@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Composition;
 using System.Linq;
 using System.Threading;
@@ -24,26 +25,14 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		Document document = context.Document;
 
 		SyntaxNode? root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-
 		if (root is not CompilationUnitSyntax compilationUnit)
 		{
 			return document;
 		}
 
-		TypeSyntax? typeArgument = expressionSyntax switch
-		{
-			ObjectCreationExpressionSyntax
-			{
-				Type: GenericNameSyntax { TypeArgumentList.Arguments: { Count: 1, } args, },
-				ArgumentList.Arguments.Count: 0,
-				Initializer: null,
-			} => args[0],
-			ImplicitObjectCreationExpressionSyntax { ArgumentList.Arguments.Count: 0, Initializer: null, }
-				=> await GetTypeArgumentFromSemanticModel(document, expressionSyntax, cancellationToken)
-					.ConfigureAwait(false),
-			_ => null,
-		};
+		SemanticModel? semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 
+		TypeSyntax? typeArgument = GetTypeArgument(expressionSyntax, semanticModel, cancellationToken);
 		if (typeArgument is null)
 		{
 			return document;
@@ -57,18 +46,37 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 			.WithTriviaFrom(expressionSyntax);
 
 		TypeSyntax? declarationType = GetDeclarationTypeSyntax(expressionSyntax);
-		if (declarationType is not null && declarationType is not IdentifierNameSyntax { IsVar: true, })
+		bool replaceDeclarationType = declarationType is not null && declarationType is not IdentifierNameSyntax { IsVar: true, };
+
+		ISymbol? mockSymbol = GetDeclaredMockSymbol(semanticModel, expressionSyntax, cancellationToken);
+		List<MemberAccessExpressionSyntax> objectAccesses = FindObjectAccesses(compilationUnit, semanticModel, mockSymbol, cancellationToken);
+
+		List<SyntaxNode> nodesToReplace = [expressionSyntax,];
+		if (replaceDeclarationType)
 		{
-			compilationUnit = compilationUnit.ReplaceNodes(
-				[expressionSyntax, declarationType,],
-				(original, _) => original == expressionSyntax
-					? createMockCall
-					: typeArgument.WithTriviaFrom(declarationType));
+			nodesToReplace.Add(declarationType!);
 		}
-		else
-		{
-			compilationUnit = compilationUnit.ReplaceNode(expressionSyntax, createMockCall);
-		}
+
+		nodesToReplace.AddRange(objectAccesses);
+
+		compilationUnit = compilationUnit.ReplaceNodes(
+			nodesToReplace,
+			(original, _) =>
+			{
+				if (original == expressionSyntax)
+				{
+					return createMockCall;
+				}
+
+				if (replaceDeclarationType && original == declarationType)
+				{
+					return typeArgument.WithTriviaFrom(declarationType!);
+				}
+
+				return original is MemberAccessExpressionSyntax memberAccess
+					? memberAccess.Expression.WithTriviaFrom(memberAccess)
+					: original;
+			});
 
 		bool hasUsing = compilationUnit.Usings.Any(u => u.Name?.ToString() == "Mockolate");
 		if (!hasUsing)
@@ -80,6 +88,21 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		return document.WithSyntaxRoot(compilationUnit);
 	}
 
+	private static TypeSyntax? GetTypeArgument(ExpressionSyntax expressionSyntax, SemanticModel? semanticModel, CancellationToken cancellationToken) =>
+		expressionSyntax switch
+		{
+			ObjectCreationExpressionSyntax
+				{
+					Type: GenericNameSyntax { TypeArgumentList.Arguments: { Count: 1, } args, },
+					ArgumentList.Arguments.Count: 0,
+					Initializer: null,
+				}
+				=> args[0],
+			ImplicitObjectCreationExpressionSyntax { ArgumentList.Arguments.Count: 0, Initializer: null, }
+				=> GetTypeArgumentFromSemanticModel(semanticModel, expressionSyntax, cancellationToken),
+			_ => null,
+		};
+
 	private static TypeSyntax? GetDeclarationTypeSyntax(ExpressionSyntax expressionSyntax) =>
 		expressionSyntax.Parent switch
 		{
@@ -87,6 +110,52 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 			EqualsValueClauseSyntax { Parent: PropertyDeclarationSyntax prop, } => prop.Type,
 			_ => null,
 		};
+
+	private static ISymbol? GetDeclaredMockSymbol(SemanticModel? semanticModel, ExpressionSyntax expressionSyntax, CancellationToken cancellationToken)
+	{
+		if (semanticModel is null)
+		{
+			return null;
+		}
+
+		return expressionSyntax.Parent switch
+		{
+			EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator, }
+				=> semanticModel.GetDeclaredSymbol(declarator, cancellationToken),
+			EqualsValueClauseSyntax { Parent: PropertyDeclarationSyntax prop, }
+				=> semanticModel.GetDeclaredSymbol(prop, cancellationToken),
+			_ => null,
+		};
+	}
+
+	private static List<MemberAccessExpressionSyntax> FindObjectAccesses(
+		CompilationUnitSyntax compilationUnit,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		List<MemberAccessExpressionSyntax> result = [];
+		foreach (MemberAccessExpressionSyntax memberAccess in compilationUnit.DescendantNodes().OfType<MemberAccessExpressionSyntax>())
+		{
+			if (memberAccess.Name.Identifier.Text != "Object")
+			{
+				continue;
+			}
+
+			SymbolInfo symbolInfo = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken);
+			if (SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, mockSymbol))
+			{
+				result.Add(memberAccess);
+			}
+		}
+
+		return result;
+	}
 
 	private static UsingDirectiveSyntax BuildUsingDirective(CompilationUnitSyntax compilationUnit, string namespaceName)
 	{
@@ -106,12 +175,11 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		return SyntaxFactory.UsingDirective(name);
 	}
 
-	private static async Task<TypeSyntax?> GetTypeArgumentFromSemanticModel(
-		Document document,
+	private static TypeSyntax? GetTypeArgumentFromSemanticModel(
+		SemanticModel? semanticModel,
 		ExpressionSyntax expressionSyntax,
 		CancellationToken cancellationToken)
 	{
-		SemanticModel? semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
 		if (semanticModel is null)
 		{
 			return null;
