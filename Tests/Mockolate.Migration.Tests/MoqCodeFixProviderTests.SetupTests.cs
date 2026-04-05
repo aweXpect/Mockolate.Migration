@@ -8,7 +8,7 @@ public partial class MoqCodeFixProviderTests
 	public sealed class SetupTests
 	{
 		[Fact]
-		public async Task WithItIsIn_MigratedToIsOneOf()
+		public async Task Method_WithItIsIn_MigratedToIsOneOf()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
 				using Moq;
@@ -41,7 +41,7 @@ public partial class MoqCodeFixProviderTests
 				""");
 
 		[Fact]
-		public async Task WithItIsInRangeExclusive_ChainsExclusive()
+		public async Task Method_WithItIsInRangeExclusive_ChainsExclusive()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
 				using Moq;
@@ -74,7 +74,7 @@ public partial class MoqCodeFixProviderTests
 				""");
 
 		[Fact]
-		public async Task WithItIsInRangeInclusive_DropsRangeArg()
+		public async Task Method_WithItIsInRangeInclusive_DropsRangeArg()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
 				using Moq;
@@ -107,7 +107,7 @@ public partial class MoqCodeFixProviderTests
 				""");
 
 		[Fact]
-		public async Task WithItIsLambda_MigratedToSatisfies()
+		public async Task Method_WithItIsLambda_MigratedToSatisfies()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
 				using Moq;
@@ -144,7 +144,7 @@ public partial class MoqCodeFixProviderTests
 				""");
 
 		[Fact]
-		public async Task WithItIsRegex_MigratedToMatchesAsRegex()
+		public async Task Method_WithItIsRegex_MigratedToMatchesAsRegex()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
 				using Moq;
@@ -177,7 +177,7 @@ public partial class MoqCodeFixProviderTests
 				""");
 
 		[Fact]
-		public async Task WithItIsTwoArgs_MigratedToIs()
+		public async Task Method_WithItIsTwoArgs_MigratedToIs()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
 				using Moq;

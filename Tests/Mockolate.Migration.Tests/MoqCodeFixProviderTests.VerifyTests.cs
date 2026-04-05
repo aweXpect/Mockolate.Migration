@@ -8,7 +8,7 @@ public partial class MoqCodeFixProviderTests
 	public sealed class VerifyTests
 	{
 		[Fact]
-		public async Task WithItTransforms_MigratesItCalls()
+		public async Task Method_WithItTransforms_MigratesItCalls()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
 				using Moq;

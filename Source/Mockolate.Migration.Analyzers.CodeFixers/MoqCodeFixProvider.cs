@@ -54,11 +54,21 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> setupCallReplacements =
 			FindAndBuildSetupCallReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
 
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> callbackReplacements =
+			FindAndBuildCallbackReplacements(compilationUnit, setupCallReplacements);
+
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> verifyCallReplacements =
 			FindAndBuildVerifyCallReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
 
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> raiseCallReplacements =
 			FindAndBuildRaiseCallReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
+
+		HashSet<InvocationExpressionSyntax> setupsWrappedByCallbacks =
+		[
+			..callbackReplacements.Keys
+				.Select(cb => (cb.Expression as MemberAccessExpressionSyntax)?.Expression as InvocationExpressionSyntax)
+				.Where(inv => inv is not null),
+		];
 
 		List<SyntaxNode> nodesToReplace = [expressionSyntax,];
 		if (replaceDeclarationType)
@@ -67,7 +77,8 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		}
 
 		nodesToReplace.AddRange(objectAccesses);
-		nodesToReplace.AddRange(setupCallReplacements.Keys);
+		nodesToReplace.AddRange(setupCallReplacements.Keys.Where(k => !setupsWrappedByCallbacks.Contains(k)));
+		nodesToReplace.AddRange(callbackReplacements.Keys);
 		nodesToReplace.AddRange(verifyCallReplacements.Keys);
 		nodesToReplace.AddRange(raiseCallReplacements.Keys);
 
@@ -87,6 +98,11 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 
 				if (original is InvocationExpressionSyntax invocation)
 				{
+					if (callbackReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? callbackReplacement))
+					{
+						return callbackReplacement;
+					}
+
 					if (setupCallReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? setupReplacement))
 					{
 						return setupReplacement;
@@ -425,6 +441,49 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				replacement = SyntaxFactory.InvocationExpression(methodAccess, transformedArgs)
 					.WithTriviaFrom(invocation);
 			}
+
+			result[invocation] = replacement;
+		}
+
+		return result;
+	}
+
+	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildCallbackReplacements(
+		CompilationUnitSyntax compilationUnit,
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> setupCallReplacements)
+	{
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> result = [];
+		foreach (InvocationExpressionSyntax invocation in compilationUnit.DescendantNodes().OfType<InvocationExpressionSyntax>())
+		{
+			if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+			{
+				continue;
+			}
+
+			if (memberAccess.Name.Identifier.Text != "Callback")
+			{
+				continue;
+			}
+
+			// Callback must be directly chained on a Setup invocation we're migrating
+			if (memberAccess.Expression is not InvocationExpressionSyntax setupInvocation ||
+			    !setupCallReplacements.TryGetValue(setupInvocation, out InvocationExpressionSyntax? migratedSetup))
+			{
+				continue;
+			}
+
+			// Replace .Callback<T1, T2, ...>(action) with .Do(action) — type args are dropped
+			// because Mockolate infers them during code generation.
+			// Reuse the original dot token to preserve leading trivia (e.g. newline + indent
+			// when .Callback is written on its own line).
+			InvocationExpressionSyntax replacement = SyntaxFactory.InvocationExpression(
+					SyntaxFactory.MemberAccessExpression(
+						SyntaxKind.SimpleMemberAccessExpression,
+						migratedSetup,
+						memberAccess.OperatorToken,
+						SyntaxFactory.IdentifierName("Do")),
+					invocation.ArgumentList)
+				.WithTriviaFrom(invocation);
 
 			result[invocation] = replacement;
 		}

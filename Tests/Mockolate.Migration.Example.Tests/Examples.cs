@@ -11,7 +11,11 @@ public class Examples
 		IChocolateDispenser sut = IChocolateDispenser.CreateMock();
 
 		sut.Mock.Setup.Dispense(It.IsAny<string>(), It.Satisfies<int>(a => a > 0))
+			.Do((x, y) => { })
 			.Returns(true);
+		sut.Mock.Setup.Dispense(It.IsAny<string>(), It.Satisfies<int>(a => a < 0))
+			.Do(() => { })
+			.Throws<Exception>();
 
 		sut.Mock.Raise.ChocolateDispensed("foo", 3);
 		IChocolateDispenser x = sut;
@@ -30,7 +34,11 @@ public class Examples
 #pragma warning restore MockolateM001
 
 		sut.Setup(m => m.Dispense(Moq.It.IsAny<string>(), Moq.It.Is<int>(x => x > 0)))
+			.Callback<string, int>((x, y) => { })
 			.Returns(true);
+		sut.Setup(m => m.Dispense(Moq.It.IsAny<string>(), Moq.It.Is<int>(x => x < 0)))
+			.Callback(() => { })
+			.Throws<Exception>();
 
 		sut.Raise(m => m.ChocolateDispensed += null, "foo", 3);
 		IChocolateDispenser x = sut.Object;
