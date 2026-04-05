@@ -166,6 +166,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		return result;
 	}
 
+#pragma warning disable S3776 // Cognitive Complexity of methods should not be too high
 	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildSetupCallReplacements(
 		CompilationUnitSyntax compilationUnit,
 		SemanticModel? semanticModel,
@@ -281,6 +282,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 
 		return result;
 	}
+#pragma warning restore S3776 // Cognitive Complexity of methods should not be too high
 
 	private static List<SimpleNameSyntax>? ExtractNavigationChain(ExpressionSyntax expression, string lambdaParamName)
 	{
@@ -400,15 +402,15 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 
 		bool isIt = memberAccess.Expression switch
 		{
-			// It.Method(...) — unqualified, with using Moq;
+			// It.Method(...) - unqualified, with using Moq
 			IdentifierNameSyntax { Identifier.Text: "It", } => true,
-			// Moq.It.Method(...) — explicitly qualified
+			// Moq.It.Method(...) - explicitly qualified
 			MemberAccessExpressionSyntax
 			{
 				Expression: IdentifierNameSyntax { Identifier.Text: "Moq", },
 				Name.Identifier.Text: "It",
 			} => true,
-			// global::Moq.It.Method(...) — alias-qualified
+			// global::Moq.It.Method(...) - alias-qualified
 			MemberAccessExpressionSyntax
 			{
 				Expression: AliasQualifiedNameSyntax { Name.Identifier.Text: "Moq", },
