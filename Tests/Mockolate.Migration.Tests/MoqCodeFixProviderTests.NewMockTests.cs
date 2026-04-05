@@ -135,6 +135,37 @@ public partial class MoqCodeFixProviderTests
 				""");
 
 		[Fact]
+		public async Task WithLooseMockBehavior_IsReplacedWithoutArgument()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>(MockBehavior.Loose)|];
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task WithNestedSetupCall_SetupIsNotRewritten()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
@@ -205,6 +236,37 @@ public partial class MoqCodeFixProviderTests
 				""");
 
 		[Fact]
+		public async Task WithQualifiedStrictMockBehavior_IsReplacedWithThrowingWhenNotSetup()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>(Moq.MockBehavior.Strict)|];
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock(Mockolate.MockBehavior.Default.ThrowingWhenNotSetup());
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task WithSetupCall_MigratesSetup()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
@@ -266,6 +328,37 @@ public partial class MoqCodeFixProviderTests
 					{
 						var mock = IFoo.CreateMock();
 						mock.Mock.Setup.Bar(It.IsAny<string>(), It.IsAny<int>()).Returns(true);
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task WithStrictMockBehavior_IsReplacedWithThrowingWhenNotSetup()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>(MockBehavior.Strict)|];
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock(Mockolate.MockBehavior.Default.ThrowingWhenNotSetup());
 					}
 				}
 				""");

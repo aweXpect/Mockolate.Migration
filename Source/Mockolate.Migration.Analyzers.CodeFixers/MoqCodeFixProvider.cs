@@ -39,12 +39,33 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 			return document;
 		}
 
-		InvocationExpressionSyntax createMockCall = SyntaxFactory.InvocationExpression(
+		InvocationExpressionSyntax createMockInvocation = SyntaxFactory.InvocationExpression(
+			SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				typeArgument.WithoutTrivia(),
+				SyntaxFactory.IdentifierName("CreateMock")));
+
+		if (HasStrictMockBehavior(expressionSyntax, semanticModel, cancellationToken))
+		{
+			ExpressionSyntax throwingWhenNotSetup = SyntaxFactory.InvocationExpression(
 				SyntaxFactory.MemberAccessExpression(
 					SyntaxKind.SimpleMemberAccessExpression,
-					typeArgument.WithoutTrivia(),
-					SyntaxFactory.IdentifierName("CreateMock")))
-			.WithTriviaFrom(expressionSyntax);
+					SyntaxFactory.MemberAccessExpression(
+						SyntaxKind.SimpleMemberAccessExpression,
+						SyntaxFactory.MemberAccessExpression(
+							SyntaxKind.SimpleMemberAccessExpression,
+							SyntaxFactory.IdentifierName("Mockolate"),
+							SyntaxFactory.IdentifierName("MockBehavior")),
+						SyntaxFactory.IdentifierName("Default")),
+					SyntaxFactory.IdentifierName("ThrowingWhenNotSetup")));
+
+			createMockInvocation = createMockInvocation.WithArgumentList(
+				SyntaxFactory.ArgumentList(
+					SyntaxFactory.SingletonSeparatedList(
+						SyntaxFactory.Argument(throwingWhenNotSetup))));
+		}
+
+		InvocationExpressionSyntax createMockCall = createMockInvocation.WithTriviaFrom(expressionSyntax);
 
 		TypeSyntax? declarationType = GetDeclarationTypeSyntax(expressionSyntax);
 		bool replaceDeclarationType = declarationType is not null && declarationType is not IdentifierNameSyntax { IsVar: true, };
@@ -147,10 +168,48 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 					Initializer: null,
 				}
 				=> args[0],
+			ObjectCreationExpressionSyntax
+				{
+					Type: GenericNameSyntax { TypeArgumentList.Arguments: { Count: 1, } args, },
+					ArgumentList: { Arguments: { Count: 1, } arguments, },
+					Initializer: null,
+				} when IsMockBehaviorArgument(arguments[0], semanticModel, cancellationToken)
+				=> args[0],
 			ImplicitObjectCreationExpressionSyntax { ArgumentList.Arguments.Count: 0, Initializer: null, }
 				=> GetTypeArgumentFromSemanticModel(semanticModel, expressionSyntax, cancellationToken),
 			_ => null,
 		};
+
+	private static bool IsMockBehaviorArgument(ArgumentSyntax argument, SemanticModel? semanticModel, CancellationToken cancellationToken)
+	{
+		if (semanticModel is not null)
+		{
+			ITypeSymbol? type = semanticModel.GetTypeInfo(argument.Expression, cancellationToken).Type;
+			return type?.ToDisplayString() == "Moq.MockBehavior";
+		}
+
+		string text = argument.Expression.ToString();
+		return text is "MockBehavior.Strict" or "Moq.MockBehavior.Strict"
+			or "MockBehavior.Loose" or "Moq.MockBehavior.Loose"
+			or "MockBehavior.Default" or "Moq.MockBehavior.Default";
+	}
+
+	private static bool HasStrictMockBehavior(ExpressionSyntax expressionSyntax, SemanticModel? semanticModel, CancellationToken cancellationToken)
+	{
+		if (expressionSyntax is not ObjectCreationExpressionSyntax { ArgumentList.Arguments: { Count: 1, } arguments, })
+		{
+			return false;
+		}
+
+		if (semanticModel is not null)
+		{
+			ISymbol? symbol = semanticModel.GetSymbolInfo(arguments[0].Expression, cancellationToken).Symbol;
+			return symbol?.ToDisplayString() == "Moq.MockBehavior.Strict";
+		}
+
+		string text = arguments[0].Expression.ToString();
+		return text is "MockBehavior.Strict" or "Moq.MockBehavior.Strict";
+	}
 
 	private static TypeSyntax? GetDeclarationTypeSyntax(ExpressionSyntax expressionSyntax) =>
 		expressionSyntax.Parent switch
