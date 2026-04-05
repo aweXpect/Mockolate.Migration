@@ -50,6 +50,8 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 
 		ISymbol? mockSymbol = GetDeclaredMockSymbol(semanticModel, expressionSyntax, cancellationToken);
 		List<MemberAccessExpressionSyntax> objectAccesses = FindObjectAccesses(compilationUnit, semanticModel, mockSymbol, cancellationToken);
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> setupCallReplacements =
+			FindAndBuildSetupCallReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
 
 		List<SyntaxNode> nodesToReplace = [expressionSyntax,];
 		if (replaceDeclarationType)
@@ -58,6 +60,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		}
 
 		nodesToReplace.AddRange(objectAccesses);
+		nodesToReplace.AddRange(setupCallReplacements.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
@@ -71,6 +74,12 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				if (replaceDeclarationType && original == declarationType)
 				{
 					return typeArgument.WithTriviaFrom(declarationType!);
+				}
+
+				if (original is InvocationExpressionSyntax invocation &&
+				    setupCallReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? setupReplacement))
+				{
+					return setupReplacement;
 				}
 
 				return original is MemberAccessExpressionSyntax memberAccess
@@ -155,6 +164,289 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		}
 
 		return result;
+	}
+
+#pragma warning disable S3776 // Cognitive Complexity of methods should not be too high
+	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildSetupCallReplacements(
+		CompilationUnitSyntax compilationUnit,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> result = [];
+		foreach (InvocationExpressionSyntax invocation in compilationUnit.DescendantNodes().OfType<InvocationExpressionSyntax>())
+		{
+			if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+			{
+				continue;
+			}
+
+			if (memberAccess.Name.Identifier.Text != "Setup")
+			{
+				continue;
+			}
+
+			SymbolInfo symbolInfo = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken);
+			if (!SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, mockSymbol))
+			{
+				continue;
+			}
+
+			if (invocation.ArgumentList.Arguments.Count != 1 ||
+			    invocation.ArgumentList.Arguments[0].Expression is not LambdaExpressionSyntax lambda)
+			{
+				continue;
+			}
+
+			if (lambda.Body is not InvocationExpressionSyntax lambdaBody ||
+			    lambdaBody.Expression is not MemberAccessExpressionSyntax lambdaMemberAccess)
+			{
+				continue;
+			}
+
+			string? lambdaParamName = lambda switch
+			{
+				SimpleLambdaExpressionSyntax simple => simple.Parameter.Identifier.Text,
+				ParenthesizedLambdaExpressionSyntax { ParameterList.Parameters: { Count: 1, } parms, }
+					=> parms[0].Identifier.Text,
+				_ => null,
+			};
+
+			if (lambdaParamName is null)
+			{
+				continue;
+			}
+
+			// Walk the receiver chain to collect navigation properties between the lambda
+			// parameter and the final method call, e.g. m => m.Child.GrandChild.Bar(...)
+			// yields ["Child", "GrandChild"]. Returns null when not rooted at the lambda param.
+			List<SimpleNameSyntax>? navigationChain = ExtractNavigationChain(lambdaMemberAccess.Expression, lambdaParamName);
+			if (navigationChain is null)
+			{
+				continue;
+			}
+
+			SimpleNameSyntax methodNameSyntax = lambdaMemberAccess.Name;
+			ArgumentListSyntax transformedArgs = TransformMoqItReferences(lambdaBody.ArgumentList);
+
+			InvocationExpressionSyntax replacement;
+			if (navigationChain.Count == 0)
+			{
+				// Direct setup: mock.Mock.Setup.Method(args)
+				MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					memberAccess.Expression,
+					SyntaxFactory.IdentifierName("Mock"));
+				MemberAccessExpressionSyntax setupAccess = SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					mockAccess,
+					SyntaxFactory.IdentifierName("Setup"));
+				MemberAccessExpressionSyntax methodAccess = SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					setupAccess,
+					methodNameSyntax);
+				replacement = SyntaxFactory.InvocationExpression(methodAccess, transformedArgs)
+					.WithTriviaFrom(invocation);
+			}
+			else
+			{
+				// Nested setup: mock.Nav1.Nav2.Mock.Method(args)
+				ExpressionSyntax navChain = memberAccess.Expression;
+				foreach (SimpleNameSyntax nav in navigationChain)
+				{
+					navChain = SyntaxFactory.MemberAccessExpression(
+						SyntaxKind.SimpleMemberAccessExpression,
+						navChain,
+						nav);
+				}
+
+				MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					navChain,
+					SyntaxFactory.IdentifierName("Mock"));
+				MemberAccessExpressionSyntax methodAccess = SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					mockAccess,
+					methodNameSyntax);
+				replacement = SyntaxFactory.InvocationExpression(methodAccess, transformedArgs)
+					.WithTriviaFrom(invocation);
+			}
+
+			result[invocation] = replacement;
+		}
+
+		return result;
+	}
+#pragma warning restore S3776 // Cognitive Complexity of methods should not be too high
+
+	private static List<SimpleNameSyntax>? ExtractNavigationChain(ExpressionSyntax expression, string lambdaParamName)
+	{
+		List<SimpleNameSyntax> chain = [];
+		ExpressionSyntax current = expression;
+		while (true)
+		{
+			if (current is IdentifierNameSyntax id && id.Identifier.Text == lambdaParamName)
+			{
+				chain.Reverse();
+				return chain;
+			}
+
+			if (current is MemberAccessExpressionSyntax memberAccess)
+			{
+				chain.Add(memberAccess.Name);
+				current = memberAccess.Expression;
+			}
+			else
+			{
+				return null;
+			}
+		}
+	}
+
+	private static ArgumentListSyntax TransformMoqItReferences(ArgumentListSyntax args) => args.ReplaceNodes(
+		args.DescendantNodes().OfType<InvocationExpressionSyntax>()
+			.Where(inv => IsMoqItCall(inv, out _, out _)),
+		TransformMoqItInvocation);
+
+	private static SyntaxNode TransformMoqItInvocation(InvocationExpressionSyntax original,
+		InvocationExpressionSyntax rewritten)
+	{
+		if (!IsMoqItCall(original, out string methodName, out TypeArgumentListSyntax? typeArgs))
+		{
+			return rewritten;
+		}
+
+		IdentifierNameSyntax itIdentifier = SyntaxFactory.IdentifierName("It");
+
+		switch (methodName)
+		{
+			case "Is" when rewritten.ArgumentList.Arguments.Count == 1
+			               && rewritten.ArgumentList.Arguments[0].Expression is LambdaExpressionSyntax:
+				return BuildItInvocation(itIdentifier, "Satisfies", typeArgs, rewritten.ArgumentList)
+					.WithTriviaFrom(original);
+
+			case "Is" when rewritten.ArgumentList.Arguments.Count == 2:
+				{
+					ArgumentListSyntax oneArgList = SyntaxFactory.ArgumentList(
+						SyntaxFactory.SeparatedList([rewritten.ArgumentList.Arguments[0],]));
+					InvocationExpressionSyntax isInvocation =
+						BuildItInvocation(itIdentifier, "Is", typeArgs, oneArgList)
+							.WithTriviaFrom(original);
+					return SyntaxFactory.InvocationExpression(
+						SyntaxFactory.MemberAccessExpression(
+							SyntaxKind.SimpleMemberAccessExpression,
+							isInvocation,
+							SyntaxFactory.IdentifierName("Using")),
+						SyntaxFactory.ArgumentList(
+							SyntaxFactory.SeparatedList([rewritten.ArgumentList.Arguments[1],])));
+				}
+
+			case "IsInRange" when rewritten.ArgumentList.Arguments.Count == 3:
+				{
+					ExpressionSyntax rangeArg = rewritten.ArgumentList.Arguments[2].Expression;
+					ArgumentListSyntax twoArgList = SyntaxFactory.ArgumentList(
+						SyntaxFactory.SeparatedList(rewritten.ArgumentList.Arguments.Take(2)));
+					InvocationExpressionSyntax rangeInvocation =
+						BuildItInvocation(itIdentifier, "IsInRange", typeArgs, twoArgList)
+							.WithTriviaFrom(original);
+					if (rangeArg is MemberAccessExpressionSyntax { Name.Identifier.Text: "Exclusive", })
+					{
+						return SyntaxFactory.InvocationExpression(
+							SyntaxFactory.MemberAccessExpression(
+								SyntaxKind.SimpleMemberAccessExpression,
+								rangeInvocation,
+								SyntaxFactory.IdentifierName("Exclusive")),
+							SyntaxFactory.ArgumentList());
+					}
+
+					return rangeInvocation;
+				}
+
+			case "IsIn":
+				return BuildItInvocation(itIdentifier, "IsOneOf", typeArgs, rewritten.ArgumentList)
+					.WithTriviaFrom(original);
+
+			case "IsRegex":
+				{
+					InvocationExpressionSyntax matchesInvocation =
+						BuildItInvocation(itIdentifier, "Matches", null, rewritten.ArgumentList)
+							.WithTriviaFrom(original);
+					return SyntaxFactory.InvocationExpression(
+						SyntaxFactory.MemberAccessExpression(
+							SyntaxKind.SimpleMemberAccessExpression,
+							matchesInvocation,
+							SyntaxFactory.IdentifierName("AsRegex")),
+						SyntaxFactory.ArgumentList());
+				}
+
+			default:
+				return BuildItInvocation(itIdentifier, methodName, typeArgs, rewritten.ArgumentList)
+					.WithTriviaFrom(original);
+		}
+	}
+
+	private static bool IsMoqItCall(InvocationExpressionSyntax invocation, out string methodName,
+		out TypeArgumentListSyntax? typeArgs)
+	{
+		if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+		{
+			methodName = "";
+			typeArgs = null;
+			return false;
+		}
+
+		bool isIt = memberAccess.Expression switch
+		{
+			// It.Method(...) - unqualified, with using Moq
+			IdentifierNameSyntax { Identifier.Text: "It", } => true,
+			// Moq.It.Method(...) - explicitly qualified
+			MemberAccessExpressionSyntax
+			{
+				Expression: IdentifierNameSyntax { Identifier.Text: "Moq", },
+				Name.Identifier.Text: "It",
+			} => true,
+			// global::Moq.It.Method(...) - alias-qualified
+			MemberAccessExpressionSyntax
+			{
+				Expression: AliasQualifiedNameSyntax { Name.Identifier.Text: "Moq", },
+				Name.Identifier.Text: "It",
+			} => true,
+			_ => false,
+		};
+
+		if (!isIt)
+		{
+			methodName = "";
+			typeArgs = null;
+			return false;
+		}
+
+		methodName = memberAccess.Name.Identifier.Text;
+		typeArgs = (memberAccess.Name as GenericNameSyntax)?.TypeArgumentList;
+		return true;
+	}
+
+	private static InvocationExpressionSyntax BuildItInvocation(
+		IdentifierNameSyntax itIdentifier,
+		string methodName,
+		TypeArgumentListSyntax? typeArgs,
+		ArgumentListSyntax args)
+	{
+		SimpleNameSyntax methodNameSyntax = typeArgs is not null
+			? SyntaxFactory.GenericName(SyntaxFactory.Identifier(methodName), typeArgs)
+			: SyntaxFactory.IdentifierName(methodName);
+
+		return SyntaxFactory.InvocationExpression(
+			SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				itIdentifier,
+				methodNameSyntax),
+			args);
 	}
 
 	private static UsingDirectiveSyntax BuildUsingDirective(CompilationUnitSyntax compilationUnit, string namespaceName)
