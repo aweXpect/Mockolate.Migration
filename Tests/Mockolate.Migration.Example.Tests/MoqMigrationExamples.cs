@@ -10,8 +10,9 @@ public class MoqMigrationExamples
 	public async Task ExpectedMigrationResult()
 	{
 		IFoo mock = IFoo.CreateMock();
+		IFoo mock2 = IFoo.CreateMock(MockBehavior.Default.ThrowingWhenNotSetup());
 
-		mock.Mock.Setup.DoSomething("ping").Returns(true);
+		mock2.Mock.Setup.DoSomething("ping").Returns(true);
 
 		// out arguments
 		string outString = "ack";
@@ -37,7 +38,7 @@ public class MoqMigrationExamples
 		mock.Mock.Setup.GetCount().Returns(() => count);
 
 		/* ------ Async Methods ------ */
-		
+
 		mock.Mock.Setup.DoSomethingAsync().ReturnsAsync(true);
 
 		/* ------ Matching Argument ------ */
@@ -67,9 +68,10 @@ public class MoqMigrationExamples
 	{
 #pragma warning disable MockolateM001
 		Mock<IFoo> mock = new();
+		Mock<IFoo> mock2 = new(Moq.MockBehavior.Strict);
 #pragma warning restore MockolateM001
 
-		mock.Setup(foo => foo.DoSomething("ping")).Returns(true);
+		mock2.Setup(foo => foo.DoSomething("ping")).Returns(true);
 
 		// out arguments
 		string outString = "ack";
@@ -95,9 +97,9 @@ public class MoqMigrationExamples
 		mock.Setup(foo => foo.GetCount()).Returns(() => count);
 
 		/* ------ Async Methods ------ */
-		
+
 		mock.Setup(foo => foo.DoSomethingAsync()).ReturnsAsync(true);
-		
+
 		/* ------ Matching Argument ------ */
 		// any value
 		mock.Setup(foo => foo.DoSomething(Moq.It.IsAny<string>())).Returns(true);
@@ -134,7 +136,7 @@ public class MoqMigrationExamples
 
 	public class Bar
 	{
-		public virtual Baz? Baz { get; set; }
+		public virtual Baz Baz { get; set; } = new();
 		public virtual bool Submit() => false;
 	}
 
