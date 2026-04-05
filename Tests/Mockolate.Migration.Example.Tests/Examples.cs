@@ -13,6 +13,7 @@ public class Examples
 		sut.Mock.Setup.Dispense(It.IsAny<string>(), It.Satisfies<int>(a => a > 0))
 			.Returns(true);
 
+		sut.Mock.Raise.ChocolateDispensed("foo", 3);
 		IChocolateDispenser x = sut;
 
 		bool result = x.Dispense("Dark", 1);
@@ -31,6 +32,7 @@ public class Examples
 		sut.Setup(m => m.Dispense(Moq.It.IsAny<string>(), Moq.It.Is<int>(x => x > 0)))
 			.Returns(true);
 
+		sut.Raise(m => m.ChocolateDispensed += null, "foo", 3);
 		IChocolateDispenser x = sut.Object;
 
 		bool result = x.Dispense("Dark", 1);

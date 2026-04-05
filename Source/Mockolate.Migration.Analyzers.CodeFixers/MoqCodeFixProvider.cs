@@ -57,6 +57,9 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> verifyCallReplacements =
 			FindAndBuildVerifyCallReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
 
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> raiseCallReplacements =
+			FindAndBuildRaiseCallReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
+
 		List<SyntaxNode> nodesToReplace = [expressionSyntax,];
 		if (replaceDeclarationType)
 		{
@@ -66,6 +69,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		nodesToReplace.AddRange(objectAccesses);
 		nodesToReplace.AddRange(setupCallReplacements.Keys);
 		nodesToReplace.AddRange(verifyCallReplacements.Keys);
+		nodesToReplace.AddRange(raiseCallReplacements.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
@@ -91,6 +95,11 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 					if (verifyCallReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? verifyReplacement))
 					{
 						return verifyReplacement;
+					}
+
+					if (raiseCallReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? raiseReplacement))
+					{
+						return raiseReplacement;
 					}
 				}
 
@@ -157,6 +166,125 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				=> semanticModel.GetDeclaredSymbol(prop, cancellationToken),
 			_ => null,
 		};
+	}
+
+	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildRaiseCallReplacements(
+		CompilationUnitSyntax compilationUnit,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> result = [];
+		foreach (InvocationExpressionSyntax invocation in compilationUnit.DescendantNodes().OfType<InvocationExpressionSyntax>())
+		{
+			if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+			{
+				continue;
+			}
+
+			if (memberAccess.Name.Identifier.Text != "Raise")
+			{
+				continue;
+			}
+
+			SymbolInfo symbolInfo = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken);
+			if (!SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, mockSymbol))
+			{
+				continue;
+			}
+
+			if (invocation.ArgumentList.Arguments.Count < 1 ||
+			    invocation.ArgumentList.Arguments[0].Expression is not LambdaExpressionSyntax lambda)
+			{
+				continue;
+			}
+
+			if (lambda.Body is not AssignmentExpressionSyntax assignment ||
+			    !assignment.IsKind(SyntaxKind.AddAssignmentExpression) ||
+			    assignment.Left is not MemberAccessExpressionSyntax eventAccess)
+			{
+				continue;
+			}
+
+			string? lambdaParamName = lambda switch
+			{
+				SimpleLambdaExpressionSyntax simple => simple.Parameter.Identifier.Text,
+				ParenthesizedLambdaExpressionSyntax { ParameterList.Parameters: { Count: 1, } parms, }
+					=> parms[0].Identifier.Text,
+				_ => null,
+			};
+
+			if (lambdaParamName is null)
+			{
+				continue;
+			}
+
+			if (eventAccess.Expression is not IdentifierNameSyntax { Identifier.Text: var paramName, } ||
+			    paramName != lambdaParamName)
+			{
+				continue;
+			}
+
+			SimpleNameSyntax eventNameSyntax = eventAccess.Name;
+
+			ArgumentListSyntax eventArgs;
+			if (invocation.ArgumentList.Arguments.Count == 2 &&
+			    IsEventArgsType(semanticModel, invocation.ArgumentList.Arguments[1].Expression, cancellationToken))
+			{
+				// Single EventArgs argument: prepend null as sender
+				eventArgs = SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(new[]
+				{
+					SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)), invocation.ArgumentList.Arguments[1],
+				}));
+			}
+			else
+			{
+				eventArgs = SyntaxFactory.ArgumentList(
+					SyntaxFactory.SeparatedList(invocation.ArgumentList.Arguments.Skip(1)));
+			}
+
+			MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				memberAccess.Expression,
+				SyntaxFactory.IdentifierName("Mock"));
+			MemberAccessExpressionSyntax raiseAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				mockAccess,
+				SyntaxFactory.IdentifierName("Raise"));
+			MemberAccessExpressionSyntax eventMethodAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				raiseAccess,
+				eventNameSyntax);
+			InvocationExpressionSyntax replacement = SyntaxFactory.InvocationExpression(eventMethodAccess, eventArgs)
+				.WithTriviaFrom(invocation);
+
+			result[invocation] = replacement;
+		}
+
+		return result;
+	}
+
+	private static bool IsEventArgsType(SemanticModel semanticModel, ExpressionSyntax expression, CancellationToken cancellationToken)
+	{
+		TypeInfo typeInfo = semanticModel.GetTypeInfo(expression, cancellationToken);
+		ITypeSymbol? type = typeInfo.Type ?? typeInfo.ConvertedType;
+		ITypeSymbol? current = type;
+		while (current is not null)
+		{
+			if (current.ContainingNamespace?.ToString() == "System" && current.Name == "EventArgs")
+			{
+				return true;
+			}
+
+			current = (current as INamedTypeSymbol)?.BaseType;
+		}
+
+		return false;
 	}
 
 	private static List<MemberAccessExpressionSyntax> FindObjectAccesses(
