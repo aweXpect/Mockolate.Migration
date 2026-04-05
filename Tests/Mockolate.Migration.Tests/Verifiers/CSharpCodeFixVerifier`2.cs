@@ -38,6 +38,14 @@ public static partial class CSharpCodeFixVerifier<TAnalyzer, TCodeFix>
 			[
 				new PackageIdentity("Moq", "4.20.72"),
 			]),
+			TestState =
+			{
+				AdditionalReferences =
+				{
+					typeof(MockRegistry).Assembly.Location,
+				},
+			},
+			CompilerDiagnostics = CompilerDiagnostics.None,
 		};
 
 		test.ExpectedDiagnostics.AddRange(expected);
@@ -75,10 +83,10 @@ public static partial class CSharpCodeFixVerifier<TAnalyzer, TCodeFix>
 			{
 				AdditionalReferences =
 				{
-					typeof(Expect).Assembly.Location,
-					typeof(ThatBool).Assembly.Location,
+					typeof(MockRegistry).Assembly.Location,
 				},
 			},
+			CompilerDiagnostics = CompilerDiagnostics.None,
 		};
 
 		test.ExpectedDiagnostics.AddRange(expected);
@@ -88,7 +96,7 @@ public static partial class CSharpCodeFixVerifier<TAnalyzer, TCodeFix>
 	public static async Task VerifyLegacyCodeFixAsync([StringSyntax("c#-test")] string source,
 		[StringSyntax("c#-test")] string fixedSource)
 		=> await VerifyLegacyCodeFixAsync(source, DiagnosticResult.EmptyDiagnosticResults, fixedSource);
-	
+
 	/// <inheritdoc
 	///     cref="CodeFixVerifier{TAnalyzer, TCodeFix, TTest, TVerifier}.VerifyCodeFixAsync(string, DiagnosticResult[], string)" />
 	public static async Task VerifyLegacyCodeFixAsync(
@@ -109,10 +117,10 @@ public static partial class CSharpCodeFixVerifier<TAnalyzer, TCodeFix>
 			{
 				AdditionalReferences =
 				{
-					typeof(Expect).Assembly.Location,
-					typeof(ThatBool).Assembly.Location,
+					typeof(MockRegistry).Assembly.Location,
 				},
 			},
+			CompilerDiagnostics = CompilerDiagnostics.None,
 		};
 
 		test.ExpectedDiagnostics.AddRange(expected);

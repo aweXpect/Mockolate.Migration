@@ -30,6 +30,7 @@
 			<PrivateAssets>all</PrivateAssets>
 		</PackageReference>
 		<PackageReference Include="aweXpect"/>
+		<PackageReference Include="Mockolate"/>
 	</ItemGroup>
 
 </Project>

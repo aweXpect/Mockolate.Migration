@@ -11,7 +11,7 @@ public class Examples
 		Mock<IChocolateDispenser> sut = new();
 #pragma warning restore MockolateM001
 
-		sut.Setup(m => m.Dispense(It.IsAny<string>(), It.Is<int>(x => x > 0)))
+		sut.Setup(m => m.Dispense(Moq.It.IsAny<string>(), Moq.It.Is<int>(x => x > 0)))
 			.Returns(true);
 
 		IChocolateDispenser x = sut.Object;
