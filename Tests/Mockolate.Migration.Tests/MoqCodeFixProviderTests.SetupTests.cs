@@ -358,5 +358,143 @@ public partial class MoqCodeFixProviderTests
 					}
 				}
 				""");
+
+		[Fact]
+		public async Task Property_MigratesSetup()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.Setup(foo => foo.Name).Returns("bar");
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Setup.Name.Returns("bar");
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task Property_Nested_MigratesSetup()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public class Baz { public virtual string Name { get; set; } = ""; }
+				public class Bar { public virtual Baz Baz { get; set; } }
+
+				public interface IFoo { Bar Bar { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.Setup(foo => foo.Bar.Baz.Name).Returns("baz");
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public class Baz { public virtual string Name { get; set; } = ""; }
+				public class Bar { public virtual Baz Baz { get; set; } }
+
+				public interface IFoo { Bar Bar { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Bar.Baz.Mock.Setup.Name.Returns("baz");
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task SetupProperty_WithDefault_MigratesInitializeWith()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.SetupProperty(f => f.Name, "foo");
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Setup.Name.InitializeWith("foo");
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task SetupProperty_WithoutDefault_MigratesRegister()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.SetupProperty(f => f.Name);
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Setup.Name.Register();
+					}
+				}
+				""");
 	}
 }

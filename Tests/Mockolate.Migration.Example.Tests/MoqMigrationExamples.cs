@@ -10,6 +10,8 @@ public class MoqMigrationExamples
 	public async Task ExpectedMigrationResult()
 	{
 		IFoo mock = IFoo.CreateMock();
+		mock.Mock.Setup.Bar.InitializeWith(Bar.CreateMock());
+		mock.Bar.Mock.Setup.Baz.InitializeWith(Baz.CreateMock());
 		IFoo mock2 = IFoo.CreateMock(MockBehavior.Default.ThrowingWhenNotSetup());
 
 		mock2.Mock.Setup.DoSomething("ping").Returns(true);
@@ -56,6 +58,17 @@ public class MoqMigrationExamples
 
 		// matching regex
 		mock.Mock.Setup.DoSomethingStringy(It.Matches("[a-d]+").AsRegex(RegexOptions.IgnoreCase)).Returns("foo");
+
+		/* ------ Properties ------ */
+		mock.Mock.Setup.Name.Returns("bar");
+
+		// auto-mocking hierarchies (a.k.a. recursive mocks)
+		mock.Bar.Baz.Mock.Setup.Name.Returns("baz");
+
+		// start "tracking" sets/gets to this property
+		mock.Mock.Setup.Name.Register();
+		// alternatively, provide a default value for the stubbed property
+		mock.Mock.Setup.Name.InitializeWith("foo");
 
 		await That(true).IsTrue();
 	}
@@ -116,6 +129,16 @@ public class MoqMigrationExamples
 		// matching regex
 		mock.Setup(x => x.DoSomethingStringy(Moq.It.IsRegex("[a-d]+", RegexOptions.IgnoreCase))).Returns("foo");
 
+		/* ------ Properties ------ */
+		mock.Setup(foo => foo.Name).Returns("bar");
+
+		// auto-mocking hierarchies (a.k.a. recursive mocks)
+		mock.Setup(foo => foo.Bar.Baz.Name).Returns("baz");
+
+		// start "tracking" sets/gets to this property
+		mock.SetupProperty(f => f.Name);
+		// alternatively, provide a default value for the stubbed property
+		mock.SetupProperty(f => f.Name, "foo");
 		await That(true).IsTrue();
 	}
 
