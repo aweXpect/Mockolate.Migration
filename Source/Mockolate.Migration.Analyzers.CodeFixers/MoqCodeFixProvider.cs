@@ -1222,28 +1222,20 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 					SyntaxFactory.IdentifierName(verifyMethod)),
 				setValueArgs ?? SyntaxFactory.ArgumentList());
 
-			InvocationExpressionSyntax replacement;
-			if (invocation.ArgumentList.Arguments.Count == 2)
-			{
-				ExpressionSyntax timesArg = invocation.ArgumentList.Arguments[1].Expression;
-				InvocationExpressionSyntax? withTimes = ApplyTimesChain(baseInvocation, timesArg);
-				if (withTimes is null)
-				{
-					continue;
-				}
+			InvocationExpressionSyntax atLeastOnceFallback = SyntaxFactory.InvocationExpression(
+				SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					baseInvocation,
+					SyntaxFactory.IdentifierName("AtLeastOnce")),
+				SyntaxFactory.ArgumentList());
 
-				replacement = withTimes.WithTriviaFrom(invocation);
-			}
-			else
-			{
-				replacement = SyntaxFactory.InvocationExpression(
-						SyntaxFactory.MemberAccessExpression(
-							SyntaxKind.SimpleMemberAccessExpression,
-							baseInvocation,
-							SyntaxFactory.IdentifierName("AtLeastOnce")),
-						SyntaxFactory.ArgumentList())
-					.WithTriviaFrom(invocation);
-			}
+			// Fall back to AtLeastOnce when the Times argument can't be translated — the
+			// Mock<T>() construction is unconditionally rewritten, so leaving the original
+			// VerifyGet/VerifySet in place would produce non-compiling code.
+			InvocationExpressionSyntax replacement = invocation.ArgumentList.Arguments.Count == 2
+				? (ApplyTimesChain(baseInvocation, invocation.ArgumentList.Arguments[1].Expression) ?? atLeastOnceFallback)
+				.WithTriviaFrom(invocation)
+				: atLeastOnceFallback.WithTriviaFrom(invocation);
 
 			result[invocation] = replacement;
 		}
@@ -1260,12 +1252,10 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		ArgumentListSyntax transformed = TransformMoqItReferences(wrapped);
 		ExpressionSyntax transformedValue = transformed.Arguments[0].Expression;
 
-		// If the transformed value is an It.* matcher invocation, use it directly.
-		if (transformedValue is InvocationExpressionSyntax transformedInvocation &&
-		    transformedInvocation.Expression is MemberAccessExpressionSyntax
-		    {
-			    Expression: IdentifierNameSyntax { Identifier.Text: "It", },
-		    })
+		// If the transformed value is rooted in an It.* matcher invocation (including
+		// chained forms like It.IsInRange(...).Exclusive() or It.Matches(...).AsRegex()),
+		// use it directly instead of wrapping it in It.Is(...).
+		if (IsRootedInItInvocation(transformedValue))
 		{
 			return SyntaxFactory.ArgumentList(
 				SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(transformedValue)));
@@ -1432,6 +1422,30 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		args.DescendantNodes().OfType<InvocationExpressionSyntax>()
 			.Where(inv => IsMoqItCall(inv, out _, out _)),
 		TransformMoqItInvocation);
+
+	// Returns true when the expression is an It.* matcher invocation, or a chained
+	// invocation whose receiver ultimately resolves to an It.* matcher invocation
+	// (e.g. It.IsInRange(...).Exclusive(), It.Is(...).Using(comparer), It.Matches(...).AsRegex()).
+	private static bool IsRootedInItInvocation(ExpressionSyntax expression)
+	{
+		ExpressionSyntax current = expression;
+		while (current is InvocationExpressionSyntax invocation)
+		{
+			if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+			{
+				return false;
+			}
+
+			if (memberAccess.Expression is IdentifierNameSyntax { Identifier.Text: "It", })
+			{
+				return true;
+			}
+
+			current = memberAccess.Expression;
+		}
+
+		return false;
+	}
 
 	private static SyntaxNode TransformMoqItInvocation(InvocationExpressionSyntax original,
 		InvocationExpressionSyntax rewritten)

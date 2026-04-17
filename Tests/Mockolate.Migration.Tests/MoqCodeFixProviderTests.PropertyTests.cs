@@ -245,6 +245,74 @@ public partial class MoqCodeFixProviderTests
 				""");
 
 		[Fact]
+		public async Task VerifySet_WithItIsInRangeExclusive_PreservesChainedMatcher()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { int Value { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.VerifySet(m => m.Value = It.IsInRange(1, 5, Range.Exclusive));
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+				using Mockolate.Verify;
+
+				public interface IFoo { int Value { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Verify.Value.Set(It.IsInRange(1, 5).Exclusive()).AtLeastOnce();
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task VerifySet_WithItIsRegex_PreservesChainedMatcher()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.VerifySet(m => m.Name = It.IsRegex("^foo$"), Times.Once());
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+				using Mockolate.Verify;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Verify.Name.Set(It.Matches("^foo$").AsRegex()).Once();
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task VerifyGet_WithNestedProperty_UsesNavigationChain()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
