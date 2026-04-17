@@ -191,6 +191,61 @@ public class MoqMigrationExamples
 		await That(true).IsTrue();
 	}
 
+	/// <summary>
+	///     Moq's <c>MockSequence</c> + <c>InSequence(seq).Setup(...)</c> pattern translates to two
+	///     independent concerns in Mockolate:
+	///     <list type="bullet">
+	///         <item>The return-value setup becomes a regular <c>Mock.Setup</c> call.</item>
+	///         <item>
+	///             The ordering assertion becomes an explicit <c>Mock.Verify.X.Then(...)</c> chain
+	///             after the system under test has been exercised.
+	///         </item>
+	///     </list>
+	///     The migration strips <c>.InSequence(seq)</c> automatically; the <c>Then</c> chain is
+	///     left to the developer because Mockolate verifies order post-hoc rather than failing
+	///     at call time.
+	/// </summary>
+	[Fact]
+	public async Task MoqCallSequence()
+	{
+#pragma warning disable MockolateM001
+		Mock<IChocolateDispenser> dispenser = new();
+#pragma warning restore MockolateM001
+
+		MockSequence sequence = new();
+		dispenser.InSequence(sequence).Setup(m => m.Dispense("Dark", 1)).Returns(true);
+		dispenser.InSequence(sequence).Setup(m => m.Dispense("Milk", 2)).Returns(true);
+		dispenser.InSequence(sequence).Setup(m => m.Dispense("White", 3)).Returns(true);
+
+		await That(dispenser.Object.Dispense("Dark", 1)).IsTrue();
+		await That(dispenser.Object.Dispense("Milk", 2)).IsTrue();
+		await That(dispenser.Object.Dispense("White", 3)).IsTrue();
+	}
+
+	/// <summary>
+	///     The post-migration equivalent of <see cref="MoqCallSequence" />: setups no longer carry
+	///     the <c>InSequence</c> wrapper, and a <c>Verify.X.Then(...)</c> chain asserts the call
+	///     order after the fact.
+	/// </summary>
+	[Fact]
+	public async Task MockolateCallOrdering()
+	{
+		IChocolateDispenser dispenser = IChocolateDispenser.CreateMock();
+		dispenser.Mock.Setup.Dispense("Dark", 1).Returns(true);
+		dispenser.Mock.Setup.Dispense("Milk", 2).Returns(true);
+		dispenser.Mock.Setup.Dispense("White", 3).Returns(true);
+
+		_ = dispenser.Dispense("Dark", 1);
+		_ = dispenser.Dispense("Milk", 2);
+		_ = dispenser.Dispense("White", 3);
+
+		dispenser.Mock.Verify.Dispense(It.Is("Dark"), It.Is(1)).Then(
+			m => m.Dispense(It.Is("Milk"), It.Is(2)),
+			m => m.Dispense(It.Is("White"), It.Is(3)));
+
+		await That(true).IsTrue();
+	}
+
 	public interface IFoo
 	{
 		Bar Bar { get; set; }

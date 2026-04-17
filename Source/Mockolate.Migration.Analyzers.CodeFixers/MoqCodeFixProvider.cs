@@ -441,8 +441,9 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				continue;
 			}
 
-			SymbolInfo symbolInfo = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken);
-			if (!SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, mockSymbol))
+			ExpressionSyntax? mockReceiver = TryResolveMockReceiver(
+				memberAccess.Expression, semanticModel, mockSymbol, cancellationToken);
+			if (mockReceiver is null)
 			{
 				continue;
 			}
@@ -485,7 +486,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				// Direct setup: mock.Mock.Setup.Method(args)
 				MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
 					SyntaxKind.SimpleMemberAccessExpression,
-					memberAccess.Expression,
+					mockReceiver,
 					SyntaxFactory.IdentifierName("Mock"));
 				MemberAccessExpressionSyntax setupAccess = SyntaxFactory.MemberAccessExpression(
 					SyntaxKind.SimpleMemberAccessExpression,
@@ -501,7 +502,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 			else
 			{
 				// Nested setup: mock.Nav1.Nav2.Mock.Method(args)
-				ExpressionSyntax navChain = memberAccess.Expression;
+				ExpressionSyntax navChain = mockReceiver;
 				foreach (SimpleNameSyntax nav in navigationChain)
 				{
 					navChain = SyntaxFactory.MemberAccessExpression(
@@ -528,6 +529,39 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		return result;
 	}
 
+	/// <summary>
+	///     Returns the mock identifier expression when <paramref name="expression" /> is the mock
+	///     itself, or a chain of <c>.InSequence(...)</c> calls on top of the mock. Returns
+	///     <c>null</c> otherwise.
+	/// </summary>
+	/// <remarks>
+	///     Moq's <c>MockSequence</c> API lets users write
+	///     <c>mock.InSequence(seq).Setup(x =&gt; x.Method(...))</c>. Mockolate has no equivalent
+	///     wrapper — call ordering is verified separately via <c>Verify.X.Then(...)</c> — so we
+	///     strip the <c>.InSequence(...)</c> layer during migration and let the user reintroduce
+	///     ordering with <c>Then</c> if needed.
+	/// </remarks>
+	private static ExpressionSyntax? TryResolveMockReceiver(
+		ExpressionSyntax expression,
+		SemanticModel semanticModel,
+		ISymbol mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		SymbolInfo symbolInfo = semanticModel.GetSymbolInfo(expression, cancellationToken);
+		if (SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, mockSymbol))
+		{
+			return expression;
+		}
+
+		if (expression is InvocationExpressionSyntax invocation &&
+		    invocation.Expression is MemberAccessExpressionSyntax { Name.Identifier.Text: "InSequence", } memberAccess)
+		{
+			return TryResolveMockReceiver(memberAccess.Expression, semanticModel, mockSymbol, cancellationToken);
+		}
+
+		return null;
+	}
+
 	private static Dictionary<InvocationExpressionSyntax, MemberAccessExpressionSyntax> FindAndBuildSetupPropertyAccessReplacements(
 		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
 		SemanticModel? semanticModel,
@@ -552,8 +586,9 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				continue;
 			}
 
-			SymbolInfo symbolInfo = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken);
-			if (!SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, mockSymbol))
+			ExpressionSyntax? mockReceiver = TryResolveMockReceiver(
+				memberAccess.Expression, semanticModel, mockSymbol, cancellationToken);
+			if (mockReceiver is null)
 			{
 				continue;
 			}
@@ -591,7 +626,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				// Direct setup: mock.Mock.Setup.Property
 				MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
 					SyntaxKind.SimpleMemberAccessExpression,
-					memberAccess.Expression,
+					mockReceiver,
 					SyntaxFactory.IdentifierName("Mock"));
 				MemberAccessExpressionSyntax setupAccess = SyntaxFactory.MemberAccessExpression(
 					SyntaxKind.SimpleMemberAccessExpression,
@@ -605,7 +640,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 			else
 			{
 				// Nested setup: mock.Nav1.Nav2.Mock.Setup.Property
-				ExpressionSyntax navChain = memberAccess.Expression;
+				ExpressionSyntax navChain = mockReceiver;
 				foreach (SimpleNameSyntax nav in navigationChain)
 				{
 					navChain = SyntaxFactory.MemberAccessExpression(
@@ -658,8 +693,9 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				continue;
 			}
 
-			SymbolInfo symbolInfo = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken);
-			if (!SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, mockSymbol))
+			ExpressionSyntax? mockReceiver = TryResolveMockReceiver(
+				memberAccess.Expression, semanticModel, mockSymbol, cancellationToken);
+			if (mockReceiver is null)
 			{
 				continue;
 			}
@@ -695,7 +731,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 			{
 				MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
 					SyntaxKind.SimpleMemberAccessExpression,
-					memberAccess.Expression,
+					mockReceiver,
 					SyntaxFactory.IdentifierName("Mock"));
 				MemberAccessExpressionSyntax setupAccess = SyntaxFactory.MemberAccessExpression(
 					SyntaxKind.SimpleMemberAccessExpression,
@@ -708,7 +744,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 			}
 			else
 			{
-				ExpressionSyntax navChain = memberAccess.Expression;
+				ExpressionSyntax navChain = mockReceiver;
 				foreach (SimpleNameSyntax nav in navigationChain)
 				{
 					navChain = SyntaxFactory.MemberAccessExpression(
