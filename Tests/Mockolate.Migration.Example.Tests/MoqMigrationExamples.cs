@@ -40,6 +40,12 @@ public class MoqMigrationExamples
 		int count = 1;
 		mock.Mock.Setup.GetCount().Returns(() => count);
 
+		// returning different values / throwing on sequential calls
+		mock.Mock.Setup.DoSomething(It.IsAny<string>())
+			.Returns(true)
+			.Throws(new Exception("Error"))
+			.Returns(false);
+
 		/* ------ Async Methods ------ */
 
 		mock.Mock.Setup.DoSomethingAsync().ReturnsAsync(true);
@@ -127,6 +133,12 @@ public class MoqMigrationExamples
 		// lazy evaluating return value
 		int count = 1;
 		mock.Setup(foo => foo.GetCount()).Returns(() => count);
+
+		// returning different values / throwing on sequential calls
+		mock.SetupSequence(foo => foo.DoSomething(Moq.It.IsAny<string>()))
+			.Returns(true)
+			.Throws(new Exception("Error"))
+			.Returns(false);
 
 		/* ------ Async Methods ------ */
 

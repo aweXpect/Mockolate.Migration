@@ -496,5 +496,153 @@ public partial class MoqCodeFixProviderTests
 					}
 				}
 				""");
+
+		[Fact]
+		public async Task SetupSequence_Method_WithReturnsAndThrowsChain_MigratesToSetup()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using Moq;
+
+				public interface IFoo { bool Dispense(string value, int count); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.SetupSequence(f => f.Dispense(It.IsAny<string>(), It.IsAny<int>()))
+							.Returns(true)
+							.Throws(new Exception("Error"))
+							.Returns(false);
+					}
+				}
+				""",
+				"""
+				using System;
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { bool Dispense(string value, int count); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Setup.Dispense(It.IsAny<string>(), It.IsAny<int>())
+							.Returns(true)
+							.Throws(new Exception("Error"))
+							.Returns(false);
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task SetupSequence_Method_WithReturnsChain_MigratesToSetup()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { int GetCount(); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.SetupSequence(f => f.GetCount()).Returns(1).Returns(2);
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { int GetCount(); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Setup.GetCount().Returns(1).Returns(2);
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task SetupSequence_NestedMethod_UsesNavigationChain()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using Moq;
+
+				public interface IBar { int GetCount(); }
+				public interface IFoo { IBar Child { get; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.SetupSequence(f => f.Child.GetCount())
+							.Returns(1)
+							.Throws<InvalidOperationException>();
+					}
+				}
+				""",
+				"""
+				using System;
+				using Moq;
+				using Mockolate;
+
+				public interface IBar { int GetCount(); }
+				public interface IFoo { IBar Child { get; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Child.Mock.GetCount()
+							.Returns(1)
+							.Throws<InvalidOperationException>();
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task SetupSequence_Property_WithReturnsChain_MigratesToSetup()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using Moq;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = [|new Mock<IFoo>()|];
+						mock.SetupSequence(f => f.Name).Returns("a").Returns("b");
+					}
+				}
+				""",
+				"""
+				using Moq;
+				using Mockolate;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var mock = IFoo.CreateMock();
+						mock.Mock.Setup.Name.Returns("a").Returns("b");
+					}
+				}
+				""");
 	}
 }

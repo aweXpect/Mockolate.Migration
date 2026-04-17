@@ -436,7 +436,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				continue;
 			}
 
-			if (memberAccess.Name.Identifier.Text != "Setup")
+			if (memberAccess.Name.Identifier.Text is not ("Setup" or "SetupSequence"))
 			{
 				continue;
 			}
@@ -547,7 +547,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 				continue;
 			}
 
-			if (memberAccess.Name.Identifier.Text is not ("Setup" or "SetupGet"))
+			if (memberAccess.Name.Identifier.Text is not ("Setup" or "SetupGet" or "SetupSequence"))
 			{
 				continue;
 			}
