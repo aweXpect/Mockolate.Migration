@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using Mockolate.Verify;
 using Moq;
 using Range = Moq.Range;
 
@@ -70,6 +71,15 @@ public class MoqMigrationExamples
 		// alternatively, provide a default value for the stubbed property
 		mock.Mock.Setup.Name.InitializeWith("foo");
 
+		/* ------ Events ------ */
+		// subscribing to and raising an event
+		mock.MyEvent += (_, _) => { };
+		mock.Mock.Raise.MyEvent(null, EventArgs.Empty);
+
+		// verifying event subscription / unsubscription
+		mock.Mock.Verify.MyEvent.Subscribed().Once();
+		mock.Mock.Verify.MyEvent.Unsubscribed().Never();
+
 		await That(true).IsTrue();
 	}
 
@@ -139,6 +149,15 @@ public class MoqMigrationExamples
 		mock.SetupProperty(f => f.Name);
 		// alternatively, provide a default value for the stubbed property
 		mock.SetupProperty(f => f.Name, "foo");
+
+		/* ------ Events ------ */
+		// subscribing to and raising an event
+		mock.Object.MyEvent += (_, _) => { };
+		mock.Raise(foo => foo.MyEvent += null, EventArgs.Empty);
+
+		// verifying event subscription / unsubscription
+		mock.VerifyAdd(foo => foo.MyEvent += Moq.It.IsAny<EventHandler>(), Times.Once());
+		mock.VerifyRemove(foo => foo.MyEvent -= Moq.It.IsAny<EventHandler>(), Times.Never);
 		await That(true).IsTrue();
 	}
 
@@ -147,6 +166,7 @@ public class MoqMigrationExamples
 		Bar Bar { get; set; }
 		string Name { get; set; }
 		int Value { get; set; }
+		event EventHandler MyEvent;
 		bool DoSomething(string value);
 		bool DoSomething(int number, string value);
 		Task<bool> DoSomethingAsync();

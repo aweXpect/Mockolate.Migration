@@ -90,6 +90,9 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> verifyCallReplacements =
 			FindAndBuildVerifyCallReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> verifyEventCallReplacements =
+			FindAndBuildVerifyEventCallReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
+
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> raiseCallReplacements =
 			FindAndBuildRaiseCallReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
@@ -105,6 +108,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 		nodesToReplace.AddRange(setupPropertyCallReplacements.Keys);
 		nodesToReplace.AddRange(callbackReplacements.Keys);
 		nodesToReplace.AddRange(verifyCallReplacements.Keys);
+		nodesToReplace.AddRange(verifyEventCallReplacements.Keys);
 		nodesToReplace.AddRange(raiseCallReplacements.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
@@ -148,6 +152,11 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 						return verifyReplacement;
 					}
 
+					if (verifyEventCallReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? verifyEventReplacement))
+					{
+						return verifyEventReplacement;
+					}
+
 					if (raiseCallReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? raiseReplacement))
 					{
 						return raiseReplacement;
@@ -166,7 +175,7 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 			compilationUnit = compilationUnit.AddUsings(usingDirective);
 		}
 
-		if (verifyCallReplacements.Count > 0)
+		if (verifyCallReplacements.Count > 0 || verifyEventCallReplacements.Count > 0)
 		{
 			bool hasVerifyUsing = compilationUnit.Usings.Any(u => u.Name?.ToString() == "Mockolate.Verify");
 			if (!hasVerifyUsing)
@@ -936,6 +945,132 @@ public class MoqCodeFixProvider() : AssertionCodeFixProvider(Rules.MoqRule)
 					methodNameSyntax);
 				baseInvocation = SyntaxFactory.InvocationExpression(methodAccess, transformedArgs);
 			}
+
+			InvocationExpressionSyntax replacement;
+			if (invocation.ArgumentList.Arguments.Count == 2)
+			{
+				ExpressionSyntax timesArg = invocation.ArgumentList.Arguments[1].Expression;
+				InvocationExpressionSyntax? withTimes = ApplyTimesChain(baseInvocation, timesArg);
+				if (withTimes is null)
+				{
+					continue;
+				}
+
+				replacement = withTimes.WithTriviaFrom(invocation);
+			}
+			else
+			{
+				replacement = SyntaxFactory.InvocationExpression(
+						SyntaxFactory.MemberAccessExpression(
+							SyntaxKind.SimpleMemberAccessExpression,
+							baseInvocation,
+							SyntaxFactory.IdentifierName("AtLeastOnce")),
+						SyntaxFactory.ArgumentList())
+					.WithTriviaFrom(invocation);
+			}
+
+			result[invocation] = replacement;
+		}
+
+		return result;
+	}
+
+	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildVerifyEventCallReplacements(
+		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> result = [];
+		foreach (InvocationExpressionSyntax invocation in allInvocations)
+		{
+			if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+			{
+				continue;
+			}
+
+			string methodName = memberAccess.Name.Identifier.Text;
+			string? eventSubscriptionMethod = methodName switch
+			{
+				"VerifyAdd" => "Subscribed",
+				"VerifyRemove" => "Unsubscribed",
+				_ => null,
+			};
+
+			if (eventSubscriptionMethod is null)
+			{
+				continue;
+			}
+
+			SymbolInfo symbolInfo = semanticModel.GetSymbolInfo(memberAccess.Expression, cancellationToken);
+			if (!SymbolEqualityComparer.Default.Equals(symbolInfo.Symbol, mockSymbol))
+			{
+				continue;
+			}
+
+			if (invocation.ArgumentList.Arguments.Count is 0 or > 2 ||
+			    invocation.ArgumentList.Arguments[0].Expression is not LambdaExpressionSyntax lambda)
+			{
+				continue;
+			}
+
+			SyntaxKind expectedAssignment = methodName == "VerifyAdd"
+				? SyntaxKind.AddAssignmentExpression
+				: SyntaxKind.SubtractAssignmentExpression;
+
+			if (lambda.Body is not AssignmentExpressionSyntax assignment ||
+			    !assignment.IsKind(expectedAssignment) ||
+			    assignment.Left is not MemberAccessExpressionSyntax eventAccess)
+			{
+				continue;
+			}
+
+			string? lambdaParamName = GetSingleLambdaParamName(lambda);
+			if (lambdaParamName is null)
+			{
+				continue;
+			}
+
+			List<SimpleNameSyntax>? navigationChain = ExtractNavigationChain(eventAccess.Expression, lambdaParamName);
+			if (navigationChain is null)
+			{
+				continue;
+			}
+
+			SimpleNameSyntax eventNameSyntax = eventAccess.Name;
+
+			ExpressionSyntax receiver = memberAccess.Expression;
+			foreach (SimpleNameSyntax nav in navigationChain)
+			{
+				receiver = SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					receiver,
+					nav);
+			}
+
+			MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				receiver,
+				SyntaxFactory.IdentifierName("Mock"));
+			MemberAccessExpressionSyntax verifyAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				mockAccess,
+				SyntaxFactory.IdentifierName("Verify"));
+			MemberAccessExpressionSyntax eventMemberAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				verifyAccess,
+				eventNameSyntax);
+			InvocationExpressionSyntax baseInvocation = SyntaxFactory.InvocationExpression(
+				SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					eventMemberAccess,
+					SyntaxFactory.IdentifierName(eventSubscriptionMethod)),
+				SyntaxFactory.ArgumentList());
 
 			InvocationExpressionSyntax replacement;
 			if (invocation.ArgumentList.Arguments.Count == 2)
