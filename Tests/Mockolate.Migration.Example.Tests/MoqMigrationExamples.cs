@@ -71,6 +71,15 @@ public class MoqMigrationExamples
 		// alternatively, provide a default value for the stubbed property
 		mock.Mock.Setup.Name.InitializeWith("foo");
 
+		// setup getter explicitly
+		mock.Mock.Setup.Name.Returns("bar");
+
+		// interact with the property and verify
+		_ = mock.Name;
+		mock.Name = "baz";
+		mock.Mock.Verify.Name.Got().AtLeastOnce();
+		mock.Mock.Verify.Name.Set(It.Is("baz")).Once();
+
 		/* ------ Events ------ */
 		// subscribing to and raising an event
 		mock.MyEvent += (_, _) => { };
@@ -149,6 +158,15 @@ public class MoqMigrationExamples
 		mock.SetupProperty(f => f.Name);
 		// alternatively, provide a default value for the stubbed property
 		mock.SetupProperty(f => f.Name, "foo");
+
+		// setup getter explicitly
+		mock.SetupGet(foo => foo.Name).Returns("bar");
+
+		// interact with the property and verify
+		_ = mock.Object.Name;
+		mock.Object.Name = "baz";
+		mock.VerifyGet(foo => foo.Name);
+		mock.VerifySet(foo => foo.Name = "baz", Times.Once());
 
 		/* ------ Events ------ */
 		// subscribing to and raising an event
