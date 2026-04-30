@@ -3,7 +3,7 @@ using Verifier = Mockolate.Migration.Tests.Verifiers.CSharpCodeFixVerifier<Mocko
 
 namespace Mockolate.Migration.Tests;
 
-public class NSubstituteCodeFixProviderTests
+public partial class NSubstituteCodeFixProviderTests
 {
 	public sealed class CreationTests
 	{
