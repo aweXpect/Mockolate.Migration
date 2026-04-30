@@ -3,7 +3,7 @@
 		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageVersion Include="Mockolate" Version="2.4.0"/>
+		<PackageVersion Include="Mockolate" Version="3.0.0"/>
 	</ItemGroup>
 	<ItemGroup>
 		<PackageVersion Include="Nullable" Version="1.3.1"/>
