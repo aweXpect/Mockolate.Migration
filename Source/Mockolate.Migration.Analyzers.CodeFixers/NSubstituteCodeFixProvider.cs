@@ -74,11 +74,15 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		Dictionary<AssignmentExpressionSyntax, InvocationExpressionSyntax> raiseReplacements =
 			FindAndBuildRaiseReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
 
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> whenDoReplacements =
+			FindAndBuildWhenDoReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
+
 		List<SyntaxNode> nodesToReplace = [substituteCall,];
 		nodesToReplace.AddRange(setupReplacements.Keys);
 		nodesToReplace.AddRange(verifyReplacements.Keys);
 		nodesToReplace.AddRange(clearReplacements.Keys);
 		nodesToReplace.AddRange(raiseReplacements.Keys);
+		nodesToReplace.AddRange(whenDoReplacements.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
@@ -104,6 +108,11 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 					if (clearReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? clearReplacement))
 					{
 						return clearReplacement;
+					}
+
+					if (whenDoReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? whenDoReplacement))
+					{
+						return whenDoReplacement;
 					}
 				}
 
@@ -247,6 +256,69 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				result[targetPropertyAccess] = setupAccess.WithTriviaFrom(targetPropertyAccess);
 				alreadyAccountedFor.Add(targetPropertyAccess);
 			}
+		}
+
+		return result;
+	}
+
+	/// <summary>
+	///     Translates <c>sub.When(x =&gt; x.Method(args)).Do(callback)</c> to
+	///     <c>sub.Mock.Setup.Method(args).Do(callback)</c>.
+	/// </summary>
+	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildWhenDoReplacements(
+		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> result = [];
+
+		foreach (InvocationExpressionSyntax doInvocation in allInvocations)
+		{
+			if (doInvocation.Expression is not MemberAccessExpressionSyntax doAccess ||
+			    doAccess.Name.Identifier.Text != "Do")
+			{
+				continue;
+			}
+
+			// Receiver of .Do(...) must be a When(...) invocation on the tracked mock.
+			if (doAccess.Expression is not InvocationExpressionSyntax whenInvocation ||
+			    whenInvocation.Expression is not MemberAccessExpressionSyntax whenAccess ||
+			    whenAccess.Name.Identifier.Text != "When")
+			{
+				continue;
+			}
+
+			if (!IsTrackedMockReceiver(whenAccess.Expression, semanticModel, mockSymbol, cancellationToken))
+			{
+				continue;
+			}
+
+			// When(lambda) — extract the method call from the lambda body.
+			if (whenInvocation.ArgumentList.Arguments.Count != 1 ||
+			    whenInvocation.ArgumentList.Arguments[0].Expression is not LambdaExpressionSyntax lambda ||
+			    lambda.Body is not InvocationExpressionSyntax lambdaBody ||
+			    lambdaBody.Expression is not MemberAccessExpressionSyntax lambdaMemberAccess)
+			{
+				continue;
+			}
+
+			ArgumentListSyntax transformedArgs = TransformNSubstituteArgReferences(lambdaBody.ArgumentList);
+			MemberAccessExpressionSyntax setupAccess = BuildSetupAccess(whenAccess.Expression, lambdaMemberAccess.Name.WithoutTrivia());
+			InvocationExpressionSyntax setupCall = SyntaxFactory.InvocationExpression(setupAccess, transformedArgs);
+
+			MemberAccessExpressionSyntax doMember = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				setupCall,
+				SyntaxFactory.IdentifierName("Do"));
+
+			result[doInvocation] = SyntaxFactory.InvocationExpression(doMember, doInvocation.ArgumentList)
+				.WithTriviaFrom(doInvocation);
 		}
 
 		return result;
