@@ -71,10 +71,14 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> clearReplacements =
 			FindAndBuildClearReceivedCallsReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
+		Dictionary<AssignmentExpressionSyntax, InvocationExpressionSyntax> raiseReplacements =
+			FindAndBuildRaiseReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
+
 		List<SyntaxNode> nodesToReplace = [substituteCall,];
 		nodesToReplace.AddRange(setupReplacements.Keys);
 		nodesToReplace.AddRange(verifyReplacements.Keys);
 		nodesToReplace.AddRange(clearReplacements.Keys);
+		nodesToReplace.AddRange(raiseReplacements.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
@@ -101,6 +105,12 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 					{
 						return clearReplacement;
 					}
+				}
+
+				if (original is AssignmentExpressionSyntax assignment &&
+				    raiseReplacements.TryGetValue(assignment, out InvocationExpressionSyntax? raiseReplacement))
+				{
+					return raiseReplacement;
 				}
 
 				return original;
@@ -243,6 +253,122 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		}
 
 		return result;
+	}
+
+	private static Dictionary<AssignmentExpressionSyntax, InvocationExpressionSyntax> FindAndBuildRaiseReplacements(
+		CompilationUnitSyntax compilationUnit,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		Dictionary<AssignmentExpressionSyntax, InvocationExpressionSyntax> result = [];
+
+		foreach (AssignmentExpressionSyntax assignment in compilationUnit.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+		{
+			if (!assignment.IsKind(SyntaxKind.AddAssignmentExpression))
+			{
+				continue;
+			}
+
+			if (assignment.Left is not MemberAccessExpressionSyntax eventAccess ||
+			    assignment.Right is not InvocationExpressionSyntax raiseInvocation)
+			{
+				continue;
+			}
+
+			if (!IsTrackedMockReceiver(eventAccess.Expression, semanticModel, mockSymbol, cancellationToken))
+			{
+				continue;
+			}
+
+			if (raiseInvocation.Expression is not MemberAccessExpressionSyntax raiseAccess ||
+			    raiseAccess.Expression is not IdentifierNameSyntax { Identifier.Text: "Raise", })
+			{
+				continue;
+			}
+
+			string raiseMethod = raiseAccess.Name.Identifier.Text;
+			ArgumentListSyntax raiseArgs = BuildRaiseArguments(raiseInvocation.ArgumentList, raiseMethod);
+
+			MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				eventAccess.Expression,
+				SyntaxFactory.IdentifierName("Mock"));
+			MemberAccessExpressionSyntax raiseMember = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				mockAccess,
+				SyntaxFactory.IdentifierName("Raise"));
+			MemberAccessExpressionSyntax raiseEventName = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				raiseMember,
+				eventAccess.Name.WithoutTrivia());
+
+			result[assignment] = SyntaxFactory.InvocationExpression(raiseEventName, raiseArgs)
+				.WithTriviaFrom(assignment);
+		}
+
+		return result;
+	}
+
+	/// <summary>
+	///     Translates the argument list of an NSubstitute <c>Raise.X(...)</c> call into the corresponding
+	///     <c>Mock.Raise.EventName(...)</c> argument list.
+	/// </summary>
+	private static ArgumentListSyntax BuildRaiseArguments(ArgumentListSyntax raiseArgs, string raiseMethod)
+	{
+		// Raise.Event<TDelegate>(args...) — non-EventHandler delegates, just forward the args.
+		// Raise.EventWith(args)       — single arg means EventArgs only (sender omitted, defaults to null).
+		// Raise.EventWith(sender, ea) — two args, pass through.
+		// Raise.Event() / Raise.EventWith() — empty, default to (null, EventArgs.Empty) for EventHandler.
+		if (raiseMethod is "Event")
+		{
+			if (raiseArgs.Arguments.Count == 0)
+			{
+				return SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(
+				[
+					SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)),
+					SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(
+						SyntaxKind.SimpleMemberAccessExpression,
+						SyntaxFactory.IdentifierName("EventArgs"),
+						SyntaxFactory.IdentifierName("Empty"))),
+				]));
+			}
+
+			return raiseArgs;
+		}
+
+		if (raiseMethod is "EventWith")
+		{
+			if (raiseArgs.Arguments.Count == 0)
+			{
+				return SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(
+				[
+					SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)),
+					SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(
+						SyntaxKind.SimpleMemberAccessExpression,
+						SyntaxFactory.IdentifierName("EventArgs"),
+						SyntaxFactory.IdentifierName("Empty"))),
+				]));
+			}
+
+			if (raiseArgs.Arguments.Count == 1)
+			{
+				return SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(
+				[
+					SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)),
+					raiseArgs.Arguments[0],
+				]));
+			}
+
+			return raiseArgs;
+		}
+
+		return raiseArgs;
 	}
 
 	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildClearReceivedCallsReplacements(
