@@ -94,5 +94,41 @@ namespace Mockolate.Migration.Analyzers {
                 return ResourceManager.GetString("MockolateM001Title", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Migrate NSubstitute to Mockolate.
+        /// </summary>
+        internal static string MockolateM002CodeFixTitle {
+            get {
+                return ResourceManager.GetString("MockolateM002CodeFixTitle", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Migrate the mocks from NSubstitute to Mockolate..
+        /// </summary>
+        internal static string MockolateM002Description {
+            get {
+                return ResourceManager.GetString("MockolateM002Description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to NSubstitute should be migrated to Mockolate..
+        /// </summary>
+        internal static string MockolateM002MessageFormat {
+            get {
+                return ResourceManager.GetString("MockolateM002MessageFormat", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to NSubstitute should be migrated..
+        /// </summary>
+        internal static string MockolateM002Title {
+            get {
+                return ResourceManager.GetString("MockolateM002Title", resourceCulture);
+            }
+        }
     }
 }

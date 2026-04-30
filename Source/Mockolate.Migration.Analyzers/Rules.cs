@@ -15,6 +15,13 @@ public static class Rules
 	public static readonly DiagnosticDescriptor MoqRule =
 		CreateDescriptor("MockolateM001", UsageCategory, DiagnosticSeverity.Warning);
 
+	/// <summary>
+	/// Migration rule for NSubstitute usage. Flags any usage of `Substitute.For&lt;T&gt;()`, `Substitute.ForPartsOf&lt;T&gt;()`,
+	/// or `Substitute.ForTypesForwardingTo(...)`.
+	/// </summary>
+	public static readonly DiagnosticDescriptor NSubstituteRule =
+		CreateDescriptor("MockolateM002", UsageCategory, DiagnosticSeverity.Warning);
+
 
 	private static DiagnosticDescriptor CreateDescriptor(string diagnosticId, string category,
 		DiagnosticSeverity severity) => new(

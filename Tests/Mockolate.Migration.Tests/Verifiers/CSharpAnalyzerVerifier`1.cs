@@ -32,6 +32,7 @@ public static partial class CSharpAnalyzerVerifier<TAnalyzer>
 			ReferenceAssemblies = ReferenceAssemblies.Net.Net80.AddPackages(
 			[
 				new PackageIdentity("Moq", "4.20.72"),
+				new PackageIdentity("NSubstitute", "5.3.0"),
 			]),
 			TestState =
 			{

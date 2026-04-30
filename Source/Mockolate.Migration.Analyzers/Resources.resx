@@ -37,4 +37,17 @@
 		<value>Migrate Moq to Mockolate</value>
 		<comment>The title of the code fix.</comment>
 	</data>
+	<data name="MockolateM002Description" xml:space="preserve">
+		<value>Migrate the mocks from NSubstitute to Mockolate.</value>
+	</data>
+	<data name="MockolateM002MessageFormat" xml:space="preserve">
+		<value>NSubstitute should be migrated to Mockolate.</value>
+	</data>
+	<data name="MockolateM002Title" xml:space="preserve">
+		<value>NSubstitute should be migrated.</value>
+	</data>
+	<data name="MockolateM002CodeFixTitle" xml:space="preserve">
+		<value>Migrate NSubstitute to Mockolate</value>
+		<comment>The title of the code fix.</comment>
+	</data>
 </root>

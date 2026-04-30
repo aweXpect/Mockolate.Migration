@@ -7,6 +7,12 @@
 		<DevelopmentDependency>false</DevelopmentDependency>
 		<NoPackageAnalysis>true</NoPackageAnalysis>
 		<NoWarn>RS2003</NoWarn>
+		<!--
+			RS2002 (release tracking) cannot resolve unshipped rules whose DiagnosticDescriptor lives in a separate
+			helper class via a factory method. The shipped MockolateM001 was added directly to Shipped.md to bypass
+			this; for newer rules we rely on the suppression instead so the unshipped queue is honoured properly.
+		-->
+		<NoWarn>$(NoWarn);RS2002</NoWarn>
 		<EnableTrimAnalyzer>false</EnableTrimAnalyzer>
 		<IsPackable>false</IsPackable>
 	</PropertyGroup>
