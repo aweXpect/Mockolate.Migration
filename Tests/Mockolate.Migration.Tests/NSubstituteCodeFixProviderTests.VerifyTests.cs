@@ -42,6 +42,74 @@ public partial class NSubstituteCodeFixProviderTests
 				""");
 
 		[Fact]
+		public async Task DidNotReceivePropertySet_RewritesToVerifySetNever()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.DidNotReceive().Name = "x";
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+				using Mockolate.Verify;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Verify.Name.Set(It.Is("x")).Never();
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task DidNotReceivePropertySetWithArgAny_TranslatesMatcherWithoutWrapping()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.DidNotReceive().Name = Arg.Any<string>();
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+				using Mockolate.Verify;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Verify.Name.Set(It.IsAny<string>()).Never();
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task DidNotReceiveWithAnyArgs_AddsAnyParametersAndNever()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
@@ -175,6 +243,74 @@ public partial class NSubstituteCodeFixProviderTests
 					{
 						var sub = IFoo.CreateMock();
 						sub.Mock.Verify.Bar(1).Once();
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task ReceivedPropertyGet_RewritesToVerifyGot()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						_ = sub.Received().Name;
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+				using Mockolate.Verify;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Verify.Name.Got().AtLeastOnce();
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task ReceivedPropertySet_RewritesToVerifySet()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Received().Name = "x";
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+				using Mockolate.Verify;
+
+				public interface IFoo { string Name { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Verify.Name.Set(It.Is("x")).AtLeastOnce();
 					}
 				}
 				""");
