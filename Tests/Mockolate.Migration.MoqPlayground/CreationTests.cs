@@ -9,7 +9,7 @@ using MockBehavior = Moq.MockBehavior;
 public class CreationTests
 {
 	[Fact]
-	public async Task ClassMockWithConstructorArgs_isCreatedWithThoseArgs()
+	public async Task ClassMockWithConstructorArgs_IsCreatedWithThoseArgs()
 	{
 		// ChocolateRecipe has a parameterless ctor, but Moq supports passing args to base.
 		Mock<ChocolateRecipe> recipe = new();
@@ -19,7 +19,7 @@ public class CreationTests
 	}
 
 	[Fact]
-	public async Task DefaultLooseMock_returnsDefaultsForUnsetMembers()
+	public async Task DefaultLooseMock_ReturnsDefaultsForUnsetMembers()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 
@@ -30,7 +30,7 @@ public class CreationTests
 	}
 
 	[Fact]
-	public async Task ExplicitLooseMock_isEquivalentToDefault()
+	public async Task ExplicitLooseMock_IsEquivalentToDefault()
 	{
 		Mock<IChocolateDispenser> dispenser = new(MockBehavior.Loose);
 
@@ -38,7 +38,7 @@ public class CreationTests
 	}
 
 	[Fact]
-	public async Task ObjectAccess_isUsedToReachTheMockedInstance()
+	public async Task ObjectAccess_IsUsedToReachTheMockedInstance()
 	{
 		Mock<IChocolateFactory> factory = new();
 		factory.Setup(f => f.RegisterRecipe("Truffle")).Returns(true);
@@ -49,7 +49,7 @@ public class CreationTests
 	}
 
 	[Fact]
-	public async Task StrictMock_throwsForUnsetMembers()
+	public async Task StrictMock_ThrowsForUnsetMembers()
 	{
 		Mock<IChocolateDispenser> dispenser = new(MockBehavior.Strict);
 

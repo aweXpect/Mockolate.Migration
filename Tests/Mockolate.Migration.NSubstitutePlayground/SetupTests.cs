@@ -8,7 +8,7 @@ namespace Mockolate.Migration.NSubstitutePlayground;
 public class SetupTests
 {
 	[Fact]
-	public async Task NestedSubstituteSetup_chainedAcrossDependentSubstitutes()
+	public async Task NestedSubstituteSetup_ChainedAcrossDependentSubstitutes()
 	{
 		// NSubstitute auto-creates child substitutes for properties returning interfaces / classes.
 		// Migration emits a TODO comment because Mockolate needs the child registered explicitly.
@@ -19,7 +19,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task PropertyAssignment_returnsLastSetValue()
+	public async Task PropertyAssignment_ReturnsLastSetValue()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 
@@ -29,7 +29,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task PropertyReturns_setsConfiguredValue()
+	public async Task PropertyReturns_SetsConfiguredValue()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Name.Returns("Choco-9000");
@@ -38,7 +38,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Returns_directValue_dispensesAndShopRecordsTotal()
+	public async Task Returns_DirectValue_DispensesAndShopRecordsTotal()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		IChocolateFactory factory = Substitute.For<IChocolateFactory>();
@@ -53,7 +53,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Returns_factory_evaluatesPerCall()
+	public async Task Returns_Factory_EvaluatesPerCall()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		int counter = 1;
@@ -68,7 +68,19 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Returns_sequenceOfValues_returnsThemInOrder()
+	public async Task Returns_CallInfoFactory_DispatchesByArgument()
+	{
+		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
+		dispenser.Dispense(Arg.Any<string>(), Arg.Any<int>())
+			.Returns(call => call.Arg<string>() == "Dark" && call.ArgAt<int>(1) > 0);
+
+		await That(dispenser.Dispense("Dark", 4)).IsTrue();
+		await That(dispenser.Dispense("Milk", 4)).IsFalse();
+		await That(dispenser.Dispense("Dark", 0)).IsFalse();
+	}
+
+	[Fact]
+	public async Task Returns_SequenceOfValues_ReturnsThemInOrder()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.CountByType("Dark").Returns(1, 2, 3);
@@ -79,7 +91,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task ReturnsAndDoes_combinesReturnAndSideEffect()
+	public async Task ReturnsAndDoes_CombinesReturnAndSideEffect()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		int sideEffect = 0;
@@ -92,7 +104,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task ReturnsAsync_completesWithValue()
+	public async Task ReturnsAsync_CompletesWithValue()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.DispenseAsync("Dark", 1).Returns(Task.FromResult(true));
@@ -101,7 +113,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task ReturnsForAnyArgs_ignoresArgumentsAtSetup()
+	public async Task ReturnsForAnyArgs_IgnoresArgumentsAtSetup()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense("Dark", 1).ReturnsForAnyArgs(true);
@@ -111,7 +123,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Throws_genericException_isRaisedOnInvocation()
+	public async Task Throws_GenericException_IsRaisedOnInvocation()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense("reset", 0).Throws<InvalidOperationException>();
@@ -121,7 +133,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Throws_specificInstance_isRaisedOnInvocation()
+	public async Task Throws_SpecificInstance_IsRaisedOnInvocation()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense("", 0).Throws(new InvalidChocolateException("empty type"));
@@ -132,7 +144,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task ThrowsForAnyArgs_appliesEveryCall()
+	public async Task ThrowsForAnyArgs_AppliesEveryCall()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense("ignored", 0).ThrowsForAnyArgs<InvalidChocolateException>();

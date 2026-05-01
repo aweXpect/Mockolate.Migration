@@ -11,7 +11,7 @@ using Range = Moq.Range;
 public class ArgumentMatcherTests
 {
 	[Fact]
-	public async Task ItIs_predicate_matchesEvenAmounts()
+	public async Task ItIs_Predicate_MatchesEvenAmounts()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense("Dark", It.Is<int>(i => i % 2 == 0))).Returns(true);
@@ -21,7 +21,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task ItIsAny_matchesAnyValue()
+	public async Task ItIsAny_MatchesAnyValue()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense(It.IsAny<string>(), It.IsAny<int>())).Returns(true);
@@ -31,7 +31,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task ItIsInRange_inclusive_matchesBoundaries()
+	public async Task ItIsInRange_Inclusive_MatchesBoundaries()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense("Dark", It.IsInRange(1, 5, Range.Inclusive))).Returns(true);
@@ -42,7 +42,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task ItIsNotNull_rejectsNull()
+	public async Task ItIsNotNull_RejectsNull()
 	{
 		Mock<IChocolateFactory> factory = new();
 		factory.Setup(f => f.RegisterRecipe(It.IsNotNull<string>())).Returns(true);
@@ -52,7 +52,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task ItIsRegex_matchesPattern()
+	public async Task ItIsRegex_MatchesPattern()
 	{
 		Mock<IChocolateFactory> factory = new();
 		factory.Setup(f => f.RegisterRecipe(It.IsRegex("^Dark", RegexOptions.IgnoreCase))).Returns(true);
@@ -62,7 +62,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task OutParameter_isSetByItIsOut()
+	public async Task OutParameter_IsSetByItIsOut()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		int reserved = 7;
@@ -75,7 +75,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task PlainValue_isUsedAsExactMatch()
+	public async Task PlainValue_IsUsedAsExactMatch()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense("Milk", 3)).Returns(true);
@@ -85,7 +85,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task RefParameter_anyMatch_acceptsAnyRef()
+	public async Task RefParameter_AnyMatch_AcceptsAnyRef()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Refill("Dark", ref It.Ref<int>.IsAny)).Returns(true);

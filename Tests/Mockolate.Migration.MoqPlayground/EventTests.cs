@@ -9,7 +9,7 @@ using It = Moq.It;
 public class EventTests
 {
 	[Fact]
-	public async Task Raise_customDelegate_invokesSubscribedHandler()
+	public async Task Raise_CustomDelegate_InvokesSubscribedHandler()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		string? observedType = null;
@@ -27,7 +27,7 @@ public class EventTests
 	}
 
 	[Fact]
-	public async Task Raise_eventHandlerStandard_passesArgs()
+	public async Task Raise_EventHandlerStandard_PassesArgs()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		int? observed = null;
@@ -39,7 +39,7 @@ public class EventTests
 	}
 
 	[Fact]
-	public async Task ShopSubscribesOnConstruction_andTracksDispensedAmounts()
+	public async Task ShopSubscribesOnConstruction_AndTracksDispensedAmounts()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		Mock<IChocolateFactory> factory = new();
@@ -58,7 +58,7 @@ public class EventTests
 	}
 
 	[Fact]
-	public async Task VerifyAdd_recordsSubscription()
+	public async Task VerifyAdd_RecordsSubscription()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		ChocolateDispensedDelegate handler = (_, _) => { };
@@ -68,7 +68,7 @@ public class EventTests
 	}
 
 	[Fact]
-	public async Task VerifyRemove_recordsUnsubscription()
+	public async Task VerifyRemove_RecordsUnsubscription()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		ChocolateDispensedDelegate handler = (_, _) => { };

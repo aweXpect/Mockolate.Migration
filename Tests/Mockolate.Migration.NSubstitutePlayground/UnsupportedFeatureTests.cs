@@ -14,7 +14,7 @@ public class UnsupportedFeatureTests
 {
 	// NOT YET MIGRATED: Arg.Do<T>(action) — capture each invocation's argument
 	[Fact]
-	public async Task ArgDo_capturesEveryInvocationArgument()
+	public async Task ArgDo_CapturesEveryInvocationArgument()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		List<int> amounts = new();
@@ -28,7 +28,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Arg.Invoke<...> to call back into a delegate parameter
 	[Fact]
-	public async Task ArgInvoke_callsThroughDelegateParameter()
+	public async Task ArgInvoke_CallsThroughDelegateParameter()
 	{
 		// Use a mini-substitute with an Action parameter to exercise Arg.Invoke.
 		IInvokeTarget target = Substitute.For<IInvokeTarget>();
@@ -40,9 +40,13 @@ public class UnsupportedFeatureTests
 		await That(called).IsEqualTo(1);
 	}
 
-	// NOT YET MIGRATED: CallInfo argument access via x => x.Arg<T>() / x.ArgAt<T>(index)
+	// PARTIALLY MIGRATED: clean CallInfo accesses are rewritten to typed lambda parameters
+	// (see SetupTests.Returns_CallInfoFactory_DispatchesByArgument). This test deliberately uses
+	// local variables whose names shadow the receiver method's parameters (`type`, `amount`),
+	// which would produce illegal shadowing after rewrite — the migration bails to a TODO
+	// comment instead of producing broken code.
 	[Fact]
-	public async Task CallInfo_argumentAccessInReturns()
+	public async Task CallInfo_ArgumentAccessInReturns_WithShadowingLocals()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense(Arg.Any<string>(), Arg.Any<int>())
@@ -60,7 +64,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: ClearSubstitute — removes setups and call history together
 	[Fact]
-	public async Task ClearSubstitute_resetsBothCallsAndSetups()
+	public async Task ClearSubstitute_ResetsBothCallsAndSetups()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense("Dark", 1).Returns(true);
@@ -75,7 +79,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Configure() — re-enter setup mode after calls have been recorded
 	[Fact]
-	public async Task Configure_changesReturnAfterUse()
+	public async Task Configure_ChangesReturnAfterUse()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense("Dark", 1).Returns(false);
@@ -88,7 +92,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Out parameters via Arg.Any<T>() with discard pattern
 	[Fact]
-	public async Task OutParameter_isSetByCallback()
+	public async Task OutParameter_IsSetByCallback()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser
@@ -107,7 +111,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Received.InOrder for ordered cross-substitute verification
 	[Fact]
-	public async Task ReceivedInOrder_ordersAcrossSubstitutes()
+	public async Task ReceivedInOrder_OrdersAcrossSubstitutes()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		IChocolateAuditor auditor = Substitute.For<IChocolateAuditor>();
@@ -125,7 +129,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: ReturnsNull / ReturnsNullForAnyArgs (extension methods)
 	[Fact]
-	public async Task ReturnsNull_isShortcutForReturnsDefault()
+	public async Task ReturnsNull_IsShortcutForReturnsDefault()
 	{
 		IChocolateFactory factory = Substitute.For<IChocolateFactory>();
 		factory.BatchBakeAsync(Arg.Any<IEnumerable<string>>()).Returns(Task.FromResult<IReadOnlyList<ChocolateBar>>(null!));
@@ -136,7 +140,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: ThrowsAsync extension on async setups
 	[Fact]
-	public async Task ThrowsAsync_appliesToAwaitedTask()
+	public async Task ThrowsAsync_AppliesToAwaitedTask()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.DispenseAsync("Dark", 1).ThrowsAsync(new TimeoutException());

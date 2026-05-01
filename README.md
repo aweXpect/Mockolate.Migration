@@ -100,6 +100,21 @@ step.
 | `Arg.Compat.X<T>(...)`                                             | same as the corresponding `Arg.X<T>(...)`                                             |
 | Nested mocks (`sub.Child.M(args).Returns(v)`)                      | `sub.Child.Mock.Setup.M(args).Returns(v)` plus a `// TODO` comment to register `Child` |
 
+## CallInfo callbacks
+
+NSubstitute's `Returns(call => …)`, `When(...).Do(call => …)`, and `AndDoes(call => …)` callbacks
+receive a `CallInfo` parameter that exposes the invocation arguments. Mockolate's equivalent
+overloads instead take the method's parameters directly, so the migration rewrites the lambda:
+
+- **Body never reads the parameter** — drop it: `Do(call => x++)` → `Do(() => x++)`.
+- **Body uses statically resolvable accesses** (`call.ArgAt<T>(literalIndex)`,
+  `call[literalIndex]`, or type-unique `call.Arg<T>()`) — rewrite the lambda's parameter list to
+  match the receiver method and replace each access with the matching parameter name:
+  `Returns(call => call.ArgAt<int>(0) + 1)` → `Returns((int x) => x + 1)`.
+- **Anything else** — bare `call`, dynamic indices, indexer-write for out/ref, ambiguous
+  `call.Arg<T>()`, or local variables that would shadow the injected parameter names — preserve
+  the original lambda and emit a `// TODO` comment so the rewrite can be done by hand.
+
 ## Argument arity
 
 Mockolate exposes both a direct-value overload and a matcher overload for properties and for methods with up to

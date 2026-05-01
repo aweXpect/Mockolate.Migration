@@ -79,7 +79,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> whenDoReplacements =
 			FindAndBuildWhenDoReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
-		HashSet<InvocationExpressionSyntax> andDoesRenames =
+		Dictionary<InvocationExpressionSyntax, IMethodSymbol?> andDoesRenames =
 			FindAndDoesRenames(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
 		List<SyntaxNode> nodesToReplace = [substituteCall,];
@@ -89,7 +89,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		nodesToReplace.AddRange(raiseReplacements.Keys);
 		nodesToReplace.AddRange(whenDoReplacements.Keys);
 		nodesToReplace.AddRange(propertyVerifyReplacements.Keys);
-		nodesToReplace.AddRange(andDoesRenames);
+		nodesToReplace.AddRange(andDoesRenames.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
@@ -122,13 +122,38 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 						return whenDoReplacement;
 					}
 
-					if (andDoesRenames.Contains(invocation) &&
+					if (andDoesRenames.TryGetValue(invocation, out IMethodSymbol? andDoesTarget) &&
 					    rewritten is InvocationExpressionSyntax rewrittenInvocation &&
 					    rewrittenInvocation.Expression is MemberAccessExpressionSyntax rewrittenAccess)
 					{
-						// The inner setup rewrite has already been applied to `rewritten` — just rename AndDoes → Do.
-						return rewrittenInvocation.WithExpression(
-							rewrittenAccess.WithName(SyntaxFactory.IdentifierName("Do")));
+						// The inner setup rewrite has already been applied to `rewritten`, but its nodes are
+						// not bound to the original SyntaxTree — semantic queries must run against the
+						// original argument syntax on `invocation`. The resulting (detached) ArgumentSyntax
+						// is then attached onto rewrittenInvocation's ArgumentList.
+						ArgumentListSyntax andDoesArgs = rewrittenInvocation.ArgumentList;
+						SyntaxTriviaList? andDoesTodo = null;
+						if (invocation.ArgumentList.Arguments.Count == 1)
+						{
+							ArgumentSyntax rewrittenArg = RewriteCallInfoCallback(
+								invocation.ArgumentList.Arguments[0], andDoesTarget, semanticModel,
+								cancellationToken, out CallbackRewriteOutcome outcome);
+							if (outcome != CallbackRewriteOutcome.NoChange)
+							{
+								andDoesArgs = andDoesArgs.WithArguments(SyntaxFactory.SingletonSeparatedList(rewrittenArg));
+							}
+
+							if (outcome == CallbackRewriteOutcome.NeedsTodo)
+							{
+								andDoesTodo = BuildCallInfoTodoTrivia(invocation);
+							}
+						}
+
+						InvocationExpressionSyntax renamed = rewrittenInvocation
+							.WithExpression(rewrittenAccess.WithName(SyntaxFactory.IdentifierName("Do")))
+							.WithArgumentList(andDoesArgs);
+						return andDoesTodo is { } trivia
+							? renamed.WithLeadingTrivia(trivia)
+							: renamed;
 					}
 				}
 
@@ -270,22 +295,31 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				InvocationExpressionSyntax setupInvocation = SyntaxFactory.InvocationExpression(setupAccess, transformedArgs)
 					.WithTriviaFrom(targetInvocation);
 
+				IMethodSymbol? receiverMethodSymbol = configuratorMethod is "Returns" or "ReturnsForAnyArgs"
+					? semanticModel.GetSymbolInfo(targetInvocation, cancellationToken).Symbol as IMethodSymbol
+					: null;
+				(InvocationExpressionSyntax effectiveOuter, bool callInfoTodoNeeded) = MaybeRewriteCallInfoArgs(
+					outerInvocation, configuratorMethod, receiverMethodSymbol, semanticModel, cancellationToken);
+
 				bool isNested = targetMemberAccess.Expression is MemberAccessExpressionSyntax;
-				BuildSequentialOuterIfNeeded(outerInvocation, configuratorMethod, setupInvocation,
+				BuildSequentialOuterIfNeeded(effectiveOuter, configuratorMethod, setupInvocation,
 					out InvocationExpressionSyntax? sequentialReplacement);
 				InvocationExpressionSyntax? outerReplacement = sequentialReplacement
 				                                               ?? (isNested
-					                                               ? BuildSimpleOuter(setupInvocation, outerInvocation, configuratorMethod)
+					                                               ? BuildSimpleOuter(setupInvocation, effectiveOuter, configuratorMethod)
 					                                               : null);
+
+				// Lambda args were rewritten OR the CallInfo callback bailed to Case C — either way, force
+				// an outer rebuild so the new args / TODO trivia have a node to attach to.
+				if (outerReplacement is null && (effectiveOuter != outerInvocation || callInfoTodoNeeded))
+				{
+					outerReplacement = BuildSimpleOuter(setupInvocation, effectiveOuter, configuratorMethod);
+				}
 
 				if (outerReplacement is not null)
 				{
-					if (isNested)
-					{
-						outerReplacement = outerReplacement.WithLeadingTrivia(
-							BuildNestedTodoTrivia(outerInvocation, targetMemberAccess.Expression));
-					}
-
+					outerReplacement = ApplySetupTrivia(outerReplacement, outerInvocation,
+						isNested ? targetMemberAccess.Expression : null, callInfoTodoNeeded);
 					result[outerInvocation] = outerReplacement;
 				}
 				else
@@ -306,22 +340,31 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				MemberAccessExpressionSyntax setupAccess = BuildSetupAccess(
 					targetPropertyAccess.Expression, targetPropertyAccess.Name);
 
+				// Property setups have no method-parameter list to bind a CallInfo lambda against, so any
+				// `call.X` reference in a Returns lambda will fall through to Case C (TODO). Pure Case A
+				// (lambda body never reads `call`) still rewrites cleanly.
+				(InvocationExpressionSyntax effectivePropertyOuter, bool propertyCallInfoTodoNeeded) =
+					MaybeRewriteCallInfoArgs(outerInvocation, configuratorMethod, null,
+						semanticModel, cancellationToken);
+
 				bool isNestedProperty = targetPropertyAccess.Expression is MemberAccessExpressionSyntax;
-				BuildSequentialOuterIfNeeded(outerInvocation, configuratorMethod, setupAccess,
+				BuildSequentialOuterIfNeeded(effectivePropertyOuter, configuratorMethod, setupAccess,
 					out InvocationExpressionSyntax? sequentialPropertyReplacement);
 				InvocationExpressionSyntax? outerPropertyReplacement = sequentialPropertyReplacement
 				                                                       ?? (isNestedProperty
-					                                                       ? BuildSimpleOuter(setupAccess, outerInvocation, configuratorMethod)
+					                                                       ? BuildSimpleOuter(setupAccess, effectivePropertyOuter, configuratorMethod)
 					                                                       : null);
+
+				if (outerPropertyReplacement is null &&
+				    (effectivePropertyOuter != outerInvocation || propertyCallInfoTodoNeeded))
+				{
+					outerPropertyReplacement = BuildSimpleOuter(setupAccess, effectivePropertyOuter, configuratorMethod);
+				}
 
 				if (outerPropertyReplacement is not null)
 				{
-					if (isNestedProperty)
-					{
-						outerPropertyReplacement = outerPropertyReplacement.WithLeadingTrivia(
-							BuildNestedTodoTrivia(outerInvocation, targetPropertyAccess.Expression));
-					}
-
+					outerPropertyReplacement = ApplySetupTrivia(outerPropertyReplacement, outerInvocation,
+						isNestedProperty ? targetPropertyAccess.Expression : null, propertyCallInfoTodoNeeded);
 					result[outerInvocation] = outerPropertyReplacement;
 				}
 				else
@@ -332,6 +375,83 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		}
 
 		return result;
+	}
+
+	/// <summary>
+	///     Pre-rewrites lambda arguments on the outer configurator (e.g. <c>.Returns(call =&gt; …)</c>) when
+	///     the configurator is one that accepts a <c>Func&lt;CallInfo, T&gt;</c> overload. Returns the (possibly
+	///     unchanged) <paramref name="outerInvocation" /> together with a flag indicating whether any of the
+	///     rewrites bailed to Case C and a TODO comment is required.
+	/// </summary>
+	private static (InvocationExpressionSyntax effectiveOuter, bool callInfoTodoNeeded) MaybeRewriteCallInfoArgs(
+		InvocationExpressionSyntax outerInvocation, string configuratorMethod, IMethodSymbol? receiverMethod,
+		SemanticModel semanticModel, CancellationToken cancellationToken)
+	{
+		if (configuratorMethod is not ("Returns" or "ReturnsForAnyArgs"))
+		{
+			return (outerInvocation, false);
+		}
+
+		ArgumentListSyntax args = outerInvocation.ArgumentList;
+		if (args.Arguments.Count == 0)
+		{
+			return (outerInvocation, false);
+		}
+
+		bool changed = false;
+		bool needsTodo = false;
+		ArgumentSyntax[] rewritten = new ArgumentSyntax[args.Arguments.Count];
+		for (int i = 0; i < args.Arguments.Count; i++)
+		{
+			ArgumentSyntax newArg = RewriteCallInfoCallback(args.Arguments[i], receiverMethod, semanticModel,
+				cancellationToken, out CallbackRewriteOutcome outcome);
+			rewritten[i] = newArg;
+			if (outcome != CallbackRewriteOutcome.NoChange)
+			{
+				changed = true;
+			}
+
+			if (outcome == CallbackRewriteOutcome.NeedsTodo)
+			{
+				needsTodo = true;
+			}
+		}
+
+		if (!changed)
+		{
+			return (outerInvocation, needsTodo);
+		}
+
+		ArgumentListSyntax newArgs = args.WithArguments(SyntaxFactory.SeparatedList(rewritten));
+		return (outerInvocation.WithArgumentList(newArgs), needsTodo);
+	}
+
+	/// <summary>
+	///     Combines the nested-mock and CallInfo TODO comments onto a single setup replacement when both apply.
+	///     Either flag may be inactive; if neither is active, the replacement is returned untouched.
+	/// </summary>
+	private static InvocationExpressionSyntax ApplySetupTrivia(InvocationExpressionSyntax replacement,
+		InvocationExpressionSyntax outerInvocation, ExpressionSyntax? nestedNavigationRoot, bool callInfoTodoNeeded)
+	{
+		if (nestedNavigationRoot is null && !callInfoTodoNeeded)
+		{
+			return replacement;
+		}
+
+		SyntaxTriviaList trivia = outerInvocation.GetLeadingTrivia();
+		if (nestedNavigationRoot is not null)
+		{
+			trivia = AppendTodoComment(trivia, outerInvocation,
+				$"// TODO: register the nested '{nestedNavigationRoot}' chain explicitly in the mock setup (Mockolate doesn't auto-mock recursively)");
+		}
+
+		if (callInfoTodoNeeded)
+		{
+			trivia = AppendTodoComment(trivia, outerInvocation,
+				"// TODO: review CallInfo usage manually — Mockolate's Do/Returns take typed parameters, not CallInfo");
+		}
+
+		return replacement.WithLeadingTrivia(trivia);
 	}
 
 	/// <summary>
@@ -350,21 +470,19 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			.WithTriviaFrom(outerInvocation);
 
 	/// <summary>
-	///     Constructs leading trivia that prepends a TODO comment about registering the nested property chain in
-	///     the Mockolate setup. The comment's indentation matches the line the original expression was on.
+	///     Leading trivia for a TODO comment alerting the user that a CallInfo-based callback could not be
+	///     rewritten automatically — the original lambda is preserved so the user can do it by hand.
 	/// </summary>
-	private static SyntaxTriviaList BuildNestedTodoTrivia(InvocationExpressionSyntax outerInvocation,
-		ExpressionSyntax navigationChainRoot)
+	private static SyntaxTriviaList BuildCallInfoTodoTrivia(SyntaxNode anchor) =>
+		AppendTodoComment(anchor.GetLeadingTrivia(), anchor,
+			"// TODO: review CallInfo usage manually — Mockolate's Do/Returns take typed parameters, not CallInfo");
+
+	private static SyntaxTriviaList AppendTodoComment(SyntaxTriviaList existingLeading, SyntaxNode anchor,
+		string commentText)
 	{
-		string chain = navigationChainRoot.ToString();
-		string commentText =
-			$"// TODO: register the nested '{chain}' chain explicitly in the mock setup (Mockolate doesn't auto-mock recursively)";
-
-		SyntaxTriviaList originalLeading = outerInvocation.GetLeadingTrivia();
-		SyntaxTrivia indent = originalLeading.LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia));
-		string endOfLine = DetectLineEnding(outerInvocation.SyntaxTree.GetRoot());
-
-		return originalLeading
+		SyntaxTrivia indent = existingLeading.LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia));
+		string endOfLine = DetectLineEnding(anchor.SyntaxTree.GetRoot());
+		return existingLeading
 			.Add(SyntaxFactory.Comment(commentText))
 			.Add(SyntaxFactory.EndOfLine(endOfLine))
 			.Add(indent);
@@ -475,16 +593,17 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 
 	/// <summary>
 	///     Identifies trailing <c>.AndDoes(callback)</c> invocations whose call chain bottoms out at the tracked
-	///     mock symbol, so the dispatcher can rename them to <c>.Do(...)</c> after the inner setup rewrite has
-	///     already been applied via Roslyn's <c>ReplaceNodes</c> nested-rewrite mechanism.
+	///     mock symbol, mapping each one to the <see cref="IMethodSymbol" /> of the underlying setup target (or
+	///     <see langword="null" /> when the bottom of the chain is a property access, in which case CallInfo body
+	///     references will fall back to a TODO).
 	/// </summary>
-	private static HashSet<InvocationExpressionSyntax> FindAndDoesRenames(
+	private static Dictionary<InvocationExpressionSyntax, IMethodSymbol?> FindAndDoesRenames(
 		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
 		SemanticModel? semanticModel,
 		ISymbol? mockSymbol,
 		CancellationToken cancellationToken)
 	{
-		HashSet<InvocationExpressionSyntax> result = [];
+		Dictionary<InvocationExpressionSyntax, IMethodSymbol?> result = [];
 		if (semanticModel is null || mockSymbol is null)
 		{
 			return result;
@@ -500,7 +619,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 
 			if (ChainResolvesToMock(access.Expression, semanticModel, mockSymbol, cancellationToken))
 			{
-				result.Add(invocation);
+				result[invocation] = FindBottomSetupMethod(access.Expression, semanticModel, cancellationToken);
 			}
 		}
 
@@ -599,17 +718,42 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			MemberAccessExpressionSyntax setupAccess = BuildSetupAccess(whenAccess.Expression, lambdaMemberAccess.Name.WithoutTrivia());
 			InvocationExpressionSyntax setupCall = SyntaxFactory.InvocationExpression(setupAccess, transformedArgs);
 
+			ArgumentListSyntax doArgs = trailingInvocation.ArgumentList;
+			SyntaxTriviaList? callInfoTodo = null;
+			if (trailingMethod == "Do" && doArgs.Arguments.Count == 1)
+			{
+				IMethodSymbol? lambdaTargetMethod =
+					semanticModel.GetSymbolInfo(lambdaBody, cancellationToken).Symbol as IMethodSymbol;
+				ArgumentSyntax rewrittenDoArg = RewriteCallInfoCallback(doArgs.Arguments[0], lambdaTargetMethod,
+					semanticModel, cancellationToken, out CallbackRewriteOutcome outcome);
+				if (outcome != CallbackRewriteOutcome.NoChange)
+				{
+					doArgs = doArgs.WithArguments(SyntaxFactory.SingletonSeparatedList(rewrittenDoArg));
+				}
+
+				if (outcome == CallbackRewriteOutcome.NeedsTodo)
+				{
+					callInfoTodo = BuildCallInfoTodoTrivia(trailingInvocation);
+				}
+			}
+
 			(string trailingName, ArgumentListSyntax trailingArgs) = trailingMethod == "DoNotCallBase"
 				? ("SkippingBaseClass", trailingInvocation.ArgumentList)
-				: ("Do", trailingInvocation.ArgumentList);
+				: ("Do", doArgs);
 
 			MemberAccessExpressionSyntax trailingMember = SyntaxFactory.MemberAccessExpression(
 				SyntaxKind.SimpleMemberAccessExpression,
 				setupCall,
 				SyntaxFactory.IdentifierName(trailingName));
 
-			result[trailingInvocation] = SyntaxFactory.InvocationExpression(trailingMember, trailingArgs)
+			InvocationExpressionSyntax replacement = SyntaxFactory.InvocationExpression(trailingMember, trailingArgs)
 				.WithTriviaFrom(trailingInvocation);
+			if (callInfoTodo is { } trivia)
+			{
+				replacement = replacement.WithLeadingTrivia(trivia);
+			}
+
+			result[trailingInvocation] = replacement;
 		}
 
 		return result;
@@ -1270,6 +1414,267 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	}
 
 	/// <summary>
+	///     Rewrites a single-arg lambda whose parameter is an NSubstitute <c>CallInfo</c> into a
+	///     Mockolate-compatible callback. Three outcomes:
+	///     <list type="bullet">
+	///         <item>
+	///             Body never references the parameter → emit <c>() =&gt; body</c> (Mockolate's
+	///             parameterless <c>Do(Action)</c> / <c>Returns(Func&lt;T&gt;)</c> overload).
+	///         </item>
+	///         <item>
+	///             Body uses only statically-resolvable <c>CallInfo</c> accesses (literal-index <c>ArgAt</c>,
+	///             literal-index indexer in rvalue position, type-unique <c>Arg&lt;T&gt;()</c>) → rewrite the
+	///             lambda parameter list to match the receiver method and replace each access with the matching
+	///             parameter name.
+	///         </item>
+	///         <item>
+	///             Anything else (bare <c>call</c>, dynamic indices, indexer-write for out/ref, other CallInfo
+	///             APIs) → leave the lambda untouched and return <see cref="CallbackRewriteOutcome.NeedsTodo" />
+	///             so the caller emits a TODO comment.
+	///         </item>
+	///     </list>
+	/// </summary>
+	private static ArgumentSyntax RewriteCallInfoCallback(ArgumentSyntax argument,
+		IMethodSymbol? receiverMethod, SemanticModel semanticModel, CancellationToken cancellationToken,
+		out CallbackRewriteOutcome outcome)
+	{
+		outcome = CallbackRewriteOutcome.NoChange;
+		if (argument.Expression is not LambdaExpressionSyntax lambda)
+		{
+			return argument;
+		}
+
+		ParameterSyntax? parameter = lambda switch
+		{
+			SimpleLambdaExpressionSyntax simple => simple.Parameter,
+			ParenthesizedLambdaExpressionSyntax { ParameterList.Parameters: { Count: 1, } ps, } => ps[0],
+			_ => null,
+		};
+		if (parameter is null)
+		{
+			return argument;
+		}
+
+		IParameterSymbol? paramSymbol = semanticModel.GetDeclaredSymbol(parameter, cancellationToken);
+		if (paramSymbol is null)
+		{
+			return argument;
+		}
+
+		// Symbol-equality match (text-prefiltered for speed) so identifiers that share the
+		// parameter's name but resolve to a nested-scope declaration don't count as references.
+		bool bodyReferencesParam = lambda.Body.DescendantNodesAndSelf()
+			.OfType<IdentifierNameSyntax>()
+			.Where(id => id.Identifier.Text == paramSymbol.Name)
+			.Any(id => SymbolEqualityComparer.Default.Equals(
+				semanticModel.GetSymbolInfo(id, cancellationToken).Symbol, paramSymbol));
+
+		// Case A: body never reads the parameter — drop it entirely so Mockolate's parameterless
+		// Action / Func<TResult> overload binds (works on every method arity).
+		if (!bodyReferencesParam)
+		{
+			ParenthesizedLambdaExpressionSyntax dropped = SyntaxFactory.ParenthesizedLambdaExpression(
+					SyntaxFactory.ParameterList(),
+					lambda.Body)
+				.WithTriviaFrom(lambda);
+			outcome = CallbackRewriteOutcome.Discarded;
+			return argument.WithExpression(dropped);
+		}
+
+		// Body references the parameter. If the user already typed it, leave alone.
+		bool isCallInfo = paramSymbol.Type is { Name: "CallInfo", } t &&
+		                  t.ContainingNamespace?.ToDisplayString() == "NSubstitute.Core";
+		if (!isCallInfo)
+		{
+			return argument;
+		}
+
+		// Case B: every reference must be statically resolvable. Any unhandled use → Case C.
+		if (receiverMethod is null ||
+		    !TryRewriteCallInfoBody(lambda, paramSymbol, receiverMethod, semanticModel,
+			    cancellationToken, out LambdaExpressionSyntax? rewritten))
+		{
+			outcome = CallbackRewriteOutcome.NeedsTodo;
+			return argument;
+		}
+
+		outcome = CallbackRewriteOutcome.Rewritten;
+		return argument.WithExpression(rewritten!);
+	}
+
+	private static bool TryRewriteCallInfoBody(LambdaExpressionSyntax lambda, IParameterSymbol paramSymbol,
+		IMethodSymbol receiverMethod, SemanticModel semanticModel, CancellationToken cancellationToken,
+		out LambdaExpressionSyntax? rewritten)
+	{
+		rewritten = null;
+
+		// Bail if any local symbol declared inside the body shares a name with one of the receiver
+		// method's parameters. Covers locals, foreach variables, catch declarations, pattern variables,
+		// local-function parameters, and nested lambda parameters — any of which would either alias the
+		// injected parameter (illegal shadowing at the same scope, e.g. `string type = type;`) or
+		// re-bind the injected name inside a nested scope so our rewrite would resolve to the wrong thing.
+		HashSet<string> paramNames = [.. receiverMethod.Parameters.Select(p => p.Name),];
+		foreach (SyntaxNode node in lambda.Body.DescendantNodes())
+		{
+			ISymbol? declared = semanticModel.GetDeclaredSymbol(node, cancellationToken);
+			if (declared is ILocalSymbol or IParameterSymbol or IRangeVariableSymbol &&
+			    paramNames.Contains(declared.Name))
+			{
+				return false;
+			}
+		}
+
+		Dictionary<SyntaxNode, SyntaxNode> replacements = [];
+
+		foreach (IdentifierNameSyntax reference in lambda.Body.DescendantNodesAndSelf()
+			         .OfType<IdentifierNameSyntax>()
+			         .Where(id => id.Identifier.Text == paramSymbol.Name))
+		{
+			// Skip identifiers that share the parameter's name but resolve to a different symbol
+			// (e.g. an inner lambda's parameter that shadows the outer CallInfo parameter).
+			if (!SymbolEqualityComparer.Default.Equals(
+				    semanticModel.GetSymbolInfo(reference, cancellationToken).Symbol, paramSymbol))
+			{
+				continue;
+			}
+
+			switch (reference.Parent)
+			{
+				// call.ArgAt<T>(N) / call.Arg<T>()
+				case MemberAccessExpressionSyntax memberAccess when memberAccess.Expression == reference
+				                                                    && memberAccess.Parent is InvocationExpressionSyntax callExpr:
+					if (!TryResolveCallInfoCall(callExpr, memberAccess, receiverMethod, semanticModel,
+						    cancellationToken, out ExpressionSyntax? callReplacement))
+					{
+						return false;
+					}
+
+					replacements[callExpr] = callReplacement!.WithTriviaFrom(callExpr);
+					break;
+
+				// call[N] (rvalue only — write-to-indexer is the out/ref pattern, handled separately).
+				case ElementAccessExpressionSyntax elementAccess when elementAccess.Expression == reference:
+					if (elementAccess.Parent is AssignmentExpressionSyntax assign && assign.Left == elementAccess)
+					{
+						return false;
+					}
+
+					if (!TryResolveCallInfoIndexer(elementAccess, receiverMethod, out ExpressionSyntax? indexerReplacement))
+					{
+						return false;
+					}
+
+					replacements[elementAccess] = indexerReplacement!.WithTriviaFrom(elementAccess);
+					break;
+
+				default:
+					// Bare `call`, call.Args(), call.ArgTypes(), call.Target(), call.GetReturnType(), etc.
+					return false;
+			}
+		}
+
+		CSharpSyntaxNode newBody = lambda.Body.ReplaceNodes(replacements.Keys,
+			(orig, _) => replacements[orig]);
+
+		SeparatedSyntaxList<ParameterSyntax> newParams = SyntaxFactory.SeparatedList(
+			receiverMethod.Parameters.Select(p =>
+				SyntaxFactory.Parameter(EscapedIdentifier(p.Name))
+					.WithType(SyntaxFactory.ParseTypeName(p.Type.ToDisplayString()))));
+
+		rewritten = SyntaxFactory.ParenthesizedLambdaExpression(
+				SyntaxFactory.ParameterList(newParams),
+				newBody)
+			.WithTriviaFrom(lambda);
+		return true;
+	}
+
+	private static bool TryResolveCallInfoCall(InvocationExpressionSyntax callExpr,
+		MemberAccessExpressionSyntax memberAccess, IMethodSymbol receiverMethod,
+		SemanticModel semanticModel, CancellationToken cancellationToken,
+		out ExpressionSyntax? replacement)
+	{
+		replacement = null;
+		string method = memberAccess.Name.Identifier.Text;
+
+		if (method == "ArgAt" &&
+		    callExpr.ArgumentList.Arguments.Count == 1 &&
+		    callExpr.ArgumentList.Arguments[0].Expression is LiteralExpressionSyntax { Token.Value: int idx, } &&
+		    idx >= 0 && idx < receiverMethod.Parameters.Length)
+		{
+			replacement = SyntaxFactory.IdentifierName(EscapedIdentifier(receiverMethod.Parameters[idx].Name));
+			return true;
+		}
+
+		if (method == "Arg" && callExpr.ArgumentList.Arguments.Count == 0 &&
+		    memberAccess.Name is GenericNameSyntax { TypeArgumentList.Arguments: { Count: 1, } typeArgs, } &&
+		    semanticModel.GetTypeInfo(typeArgs[0], cancellationToken).Type is { } targetType)
+		{
+			IParameterSymbol[] matches = receiverMethod.Parameters
+				.Where(p => SymbolEqualityComparer.Default.Equals(p.Type, targetType))
+				.ToArray();
+			if (matches.Length != 1)
+			{
+				return false;
+			}
+
+			replacement = SyntaxFactory.IdentifierName(EscapedIdentifier(matches[0].Name));
+			return true;
+		}
+
+		return false;
+	}
+
+	private static bool TryResolveCallInfoIndexer(ElementAccessExpressionSyntax elementAccess,
+		IMethodSymbol receiverMethod, out ExpressionSyntax? replacement)
+	{
+		replacement = null;
+		if (elementAccess.ArgumentList.Arguments.Count != 1 ||
+		    elementAccess.ArgumentList.Arguments[0].Expression is not LiteralExpressionSyntax { Token.Value: int idx, } ||
+		    idx < 0 || idx >= receiverMethod.Parameters.Length)
+		{
+			return false;
+		}
+
+		replacement = SyntaxFactory.IdentifierName(EscapedIdentifier(receiverMethod.Parameters[idx].Name));
+		return true;
+	}
+
+	/// <summary>
+	///     Builds an identifier token whose source text is escaped with a leading <c>@</c> when
+	///     <paramref name="name" /> collides with a reserved C# keyword (e.g. <c>event</c>, <c>class</c>).
+	///     Contextual keywords are valid identifiers in expression/parameter positions and are left alone.
+	/// </summary>
+	private static SyntaxToken EscapedIdentifier(string name) =>
+		SyntaxFacts.GetKeywordKind(name) != SyntaxKind.None
+			? SyntaxFactory.Identifier(default, SyntaxKind.None, "@" + name, name, default)
+			: SyntaxFactory.Identifier(name);
+
+	/// <summary>
+	///     Walks down a configurator chain (e.g. <c>sub.Bar(1).Returns(v).Throws&lt;E&gt;()</c>) past every
+	///     <see cref="SetupConfiguratorMethods" /> entry until it lands on the underlying setup target. Returns
+	///     that target's <see cref="IMethodSymbol" />, or <see langword="null" /> when the bottom of the chain is
+	///     a property access (no method to map CallInfo accesses against).
+	/// </summary>
+	private static IMethodSymbol? FindBottomSetupMethod(ExpressionSyntax expression,
+		SemanticModel semanticModel, CancellationToken cancellationToken)
+	{
+		ExpressionSyntax current = expression;
+		while (current is InvocationExpressionSyntax inv && inv.Expression is MemberAccessExpressionSyntax memberAccess)
+		{
+			if (SetupConfiguratorMethods.Contains(memberAccess.Name.Identifier.Text) ||
+			    memberAccess.Name.Identifier.Text == "AndDoes")
+			{
+				current = memberAccess.Expression;
+				continue;
+			}
+
+			return semanticModel.GetSymbolInfo(current, cancellationToken).Symbol as IMethodSymbol;
+		}
+
+		return null;
+	}
+
+	/// <summary>
 	///     Translates the NSubstitute creation call to a Mockolate creation chain. Returns <see langword="null" />
 	///     when the call cannot be migrated.
 	/// </summary>
@@ -1379,6 +1784,21 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		}
 
 		return "\n";
+	}
+
+	private enum CallbackRewriteOutcome
+	{
+		/// <summary>Lambda left untouched (already typed by the user, no callback at all, etc.).</summary>
+		NoChange,
+
+		/// <summary>Body never referenced the parameter — emitted <c>() =&gt; body</c>.</summary>
+		Discarded,
+
+		/// <summary>All <c>call.X</c> references rewritten to typed parameters.</summary>
+		Rewritten,
+
+		/// <summary>Could not safely rewrite — original lambda preserved, caller should add a TODO comment.</summary>
+		NeedsTodo,
 	}
 }
 

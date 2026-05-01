@@ -7,7 +7,7 @@ namespace Mockolate.Migration.NSubstitutePlayground;
 public class ArgumentMatcherTests
 {
 	[Fact]
-	public async Task ArgAny_matchesAnyValue()
+	public async Task ArgAny_MatchesAnyValue()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense(Arg.Any<string>(), Arg.Any<int>()).Returns(true);
@@ -17,7 +17,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task ArgCompat_AnyAndIs_workLikePlainArg()
+	public async Task ArgCompat_AnyAndIs_WorkLikePlainArg()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense(Arg.Compat.Any<string>(), Arg.Compat.Is<int>(i => i > 0)).Returns(true);
@@ -27,7 +27,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task ArgIs_predicate_matchesEvenAmounts()
+	public async Task ArgIs_Predicate_MatchesEvenAmounts()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense("Dark", Arg.Is<int>(i => i % 2 == 0)).Returns(true);
@@ -37,7 +37,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task ArgIs_value_matchesExactValue()
+	public async Task ArgIs_Value_MatchesExactValue()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense(Arg.Is("Dark"), Arg.Is(2)).Returns(true);
@@ -47,7 +47,7 @@ public class ArgumentMatcherTests
 	}
 
 	[Fact]
-	public async Task PlainValue_isUsedAsExactMatch()
+	public async Task PlainValue_IsUsedAsExactMatch()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense("Milk", 3).Returns(true);

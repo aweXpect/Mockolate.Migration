@@ -7,7 +7,7 @@ namespace Mockolate.Migration.NSubstitutePlayground;
 public class WhenDoTests
 {
 	[Fact]
-	public async Task When_DoNotCallBase_disablesPartialBaseInvocation()
+	public async Task When_DoNotCallBase_DisablesPartialBaseInvocation()
 	{
 		// ForPartsOf normally calls real virtual methods. DoNotCallBase suppresses that.
 		ChocolateRecipe recipe = Substitute.ForPartsOf<ChocolateRecipe>();
@@ -21,7 +21,7 @@ public class WhenDoTests
 	}
 
 	[Fact]
-	public async Task When_voidMethod_runsCallback()
+	public async Task When_VoidMethod_RunsCallback()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		string? captured = null;
@@ -34,7 +34,7 @@ public class WhenDoTests
 	}
 
 	[Fact]
-	public async Task WhenForAnyArgs_voidMethod_runsCallbackForAnyInvocation()
+	public async Task WhenForAnyArgs_VoidMethod_RunsCallbackForAnyInvocation()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		int count = 0;

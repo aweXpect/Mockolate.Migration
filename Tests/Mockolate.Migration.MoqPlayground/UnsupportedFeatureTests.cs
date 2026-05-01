@@ -15,7 +15,7 @@ public class UnsupportedFeatureTests
 {
 	// NOT YET MIGRATED: CallBase = true (delegate to base implementation)
 	[Fact]
-	public async Task CallBase_invokesBaseClassImplementation()
+	public async Task CallBase_InvokesBaseClassImplementation()
 	{
 		Mock<ChocolateRecipe> recipe = new()
 		{
@@ -30,7 +30,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Custom DefaultValueProvider
 	[Fact]
-	public async Task DefaultValueProviderMock_returnsAutoMockedReferenceTypes()
+	public async Task DefaultValueProviderMock_ReturnsAutoMockedReferenceTypes()
 	{
 		Mock<IChocolateFactory> factory = new()
 		{
@@ -46,7 +46,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: It.IsNotIn / It.IsIn (set membership matchers)
 	[Fact]
-	public async Task ItIsIn_acceptsAnyValueFromTheSet()
+	public async Task ItIsIn_AcceptsAnyValueFromTheSet()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense(It.IsIn("Dark", "Milk"), 1)).Returns(true);
@@ -58,7 +58,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Mock.As<T>() to add a secondary interface
 	[Fact]
-	public async Task MockAs_castToAdditionalInterface()
+	public async Task MockAs_CastToAdditionalInterface()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.As<IChocolateAuditor>()
@@ -70,7 +70,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Mock.Of<T>() (LINQ to Mocks)
 	[Fact]
-	public async Task MockOf_setsUpAllReturnsImplicitly()
+	public async Task MockOf_SetsUpAllReturnsImplicitly()
 	{
 		IChocolateDispenser dispenser = Moq.Mock.Of<IChocolateDispenser>(d =>
 			d.Name == "Quick" &&
@@ -82,7 +82,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: MockRepository for grouped Verifiable + VerifyAll
 	[Fact]
-	public async Task MockRepository_groupsAndVerifiesAllInOneShot()
+	public async Task MockRepository_GroupsAndVerifiesAllInOneShot()
 	{
 		MockRepository repo = new(MockBehavior.Strict);
 		Mock<IChocolateDispenser> dispenser = repo.Create<IChocolateDispenser>();
@@ -98,7 +98,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Protected() to set up protected virtual members
 	[Fact]
-	public async Task Protected_setupOfProtectedMethod()
+	public async Task Protected_SetupOfProtectedMethod()
 	{
 		Mock<ChocolateRecipe> recipe = new();
 		recipe.Protected().Setup<int>("InternalSecret").Returns(123);
@@ -110,7 +110,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Returns overload that takes the Mock itself (mock.Object self-reference)
 	[Fact]
-	public async Task Returns_factoryWithCapturedMock_canReadOtherSetups()
+	public async Task Returns_FactoryWithCapturedMock_CanReadOtherSetups()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupGet(d => d.TotalDispensed).Returns(42);
@@ -123,7 +123,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: SetupAllProperties stubs every readable+writable property
 	[Fact]
-	public async Task SetupAllProperties_makesAllPropertiesStateful()
+	public async Task SetupAllProperties_MakesAllPropertiesStateful()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupAllProperties();
@@ -137,7 +137,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Strict mock with Verifiable() chain to check that every verifiable setup ran
 	[Fact]
-	public async Task Strict_withVerifiableSetups_passesWhenAllAreInvoked()
+	public async Task Strict_WithVerifiableSetups_PassesWhenAllAreInvoked()
 	{
 		Mock<IChocolateDispenser> dispenser = new(MockBehavior.Strict);
 		dispenser.Setup(d => d.Dispense("Dark", 1)).Returns(true).Verifiable();
@@ -151,7 +151,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: Verifiable() + mock.Verify()
 	[Fact]
-	public async Task VerifiableSetup_andMockVerify()
+	public async Task VerifiableSetup_AndMockVerify()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense("Dark", 1)).Returns(true).Verifiable();
@@ -163,7 +163,7 @@ public class UnsupportedFeatureTests
 
 	// NOT YET MIGRATED: VerifyAll() / VerifyNoOtherCalls()
 	[Fact]
-	public async Task VerifyAll_andVerifyNoOtherCalls()
+	public async Task VerifyAll_AndVerifyNoOtherCalls()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense("Dark", 1)).Returns(true);

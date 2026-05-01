@@ -10,7 +10,7 @@ using MockBehavior = Moq.MockBehavior;
 public class SequenceTests
 {
 	[Fact]
-	public async Task MockSequence_strictOrdering_isHonored()
+	public async Task MockSequence_StrictOrdering_IsHonored()
 	{
 		Mock<IChocolateDispenser> dispenser = new(MockBehavior.Strict);
 		MockSequence sequence = new();
@@ -25,7 +25,7 @@ public class SequenceTests
 	}
 
 	[Fact]
-	public async Task SetupSequence_returnsValuesInOrder()
+	public async Task SetupSequence_ReturnsValuesInOrder()
 	{
 		Mock<IChocolateFactory> factory = new();
 		factory.SetupSequence(f => f.RegisterRecipe(It.IsAny<string>()))

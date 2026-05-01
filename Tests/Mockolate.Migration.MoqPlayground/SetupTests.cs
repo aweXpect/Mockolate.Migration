@@ -9,7 +9,7 @@ using It = Moq.It;
 public class SetupTests
 {
 	[Fact]
-	public async Task Callback_observesArgumentsBeforeReturning()
+	public async Task Callback_ObservesArgumentsBeforeReturning()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		string? observedType = null;
@@ -30,7 +30,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task NestedMockSetup_recursive_chainsThroughChildMock()
+	public async Task NestedMockSetup_Recursive_ChainsThroughChildMock()
 	{
 		// Auto-mocking hierarchy: Moq creates child mocks for properties on demand.
 		Mock<INested> outer = new()
@@ -43,7 +43,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Returns_argumentBased_evaluatesFromArgument()
+	public async Task Returns_ArgumentBased_EvaluatesFromArgument()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense(It.IsAny<string>())).Returns((string s) => s.Length > 0);
@@ -53,7 +53,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Returns_directValue_dispensesAndShopRecordsTotal()
+	public async Task Returns_DirectValue_DispensesAndShopRecordsTotal()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		Mock<IChocolateFactory> factory = new();
@@ -68,7 +68,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Returns_lazyFactory_evaluatedOnEachCall()
+	public async Task Returns_LazyFactory_EvaluatedOnEachCall()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		int count = 1;
@@ -83,7 +83,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task ReturnsAsync_completesWithValue()
+	public async Task ReturnsAsync_CompletesWithValue()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.DispenseAsync("Dark", 1)).ReturnsAsync(true);
@@ -92,7 +92,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task ReturnsAsync_factory_evaluatesPerCall()
+	public async Task ReturnsAsync_Factory_EvaluatesPerCall()
 	{
 		Mock<IChocolateFactory> factory = new();
 		factory.Setup(f => f.BakeAsync(It.IsAny<string>(), It.IsAny<int>()))
@@ -106,7 +106,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task SetupGet_property_returnsConfiguredValue()
+	public async Task SetupGet_Property_ReturnsConfiguredValue()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupGet(d => d.Name).Returns("Choco-9000");
@@ -115,7 +115,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task SetupProperty_tracksAssignmentsAndReturnsLastValue()
+	public async Task SetupProperty_TracksAssignmentsAndReturnsLastValue()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupProperty(d => d.Name);
@@ -126,7 +126,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task SetupProperty_withInitialValue_returnsThatBeforeAssignment()
+	public async Task SetupProperty_WithInitialValue_ReturnsThatBeforeAssignment()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupProperty(d => d.Name, "Default");
@@ -135,7 +135,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task SetupSequence_returnsValuesInOrder_thenDefault()
+	public async Task SetupSequence_ReturnsValuesInOrder_ThenDefault()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupSequence(d => d.Dispense(It.IsAny<string>(), It.IsAny<int>()))
@@ -150,7 +150,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Throws_genericException_isRaisedOnInvocation()
+	public async Task Throws_GenericException_IsRaisedOnInvocation()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense("reset", 0)).Throws<InvalidOperationException>();
@@ -160,7 +160,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Throws_specificInstance_isRaisedOnInvocation()
+	public async Task Throws_SpecificInstance_IsRaisedOnInvocation()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense("", 0)).Throws(new InvalidChocolateException("empty type"));
@@ -171,7 +171,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task ThrowsAsync_completesWithException()
+	public async Task ThrowsAsync_CompletesWithException()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.DispenseAsync("Dark", 1)).ThrowsAsync(new TimeoutException());
