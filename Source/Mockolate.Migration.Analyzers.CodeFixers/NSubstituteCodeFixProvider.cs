@@ -68,9 +68,13 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> verifyReplacements =
 			FindAndBuildVerifyReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> clearReplacements =
+			FindAndBuildClearReceivedCallsReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
+
 		List<SyntaxNode> nodesToReplace = [substituteCall,];
 		nodesToReplace.AddRange(setupReplacements.Keys);
 		nodesToReplace.AddRange(verifyReplacements.Keys);
+		nodesToReplace.AddRange(clearReplacements.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
@@ -86,10 +90,17 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 					return setupReplacement;
 				}
 
-				if (original is InvocationExpressionSyntax invocation &&
-				    verifyReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? verifyReplacement))
+				if (original is InvocationExpressionSyntax invocation)
 				{
-					return verifyReplacement;
+					if (verifyReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? verifyReplacement))
+					{
+						return verifyReplacement;
+					}
+
+					if (clearReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? clearReplacement))
+					{
+						return clearReplacement;
+					}
 				}
 
 				return original;
@@ -229,6 +240,65 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 
 				result[targetPropertyAccess] = setupAccess.WithTriviaFrom(targetPropertyAccess);
 			}
+		}
+
+		return result;
+	}
+
+	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildClearReceivedCallsReplacements(
+		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> result = [];
+
+		foreach (InvocationExpressionSyntax invocation in allInvocations)
+		{
+			if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess ||
+			    memberAccess.Name.Identifier.Text != "ClearReceivedCalls")
+			{
+				continue;
+			}
+
+			if (invocation.ArgumentList.Arguments.Count != 0)
+			{
+				continue;
+			}
+
+			if (semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol is not IMethodSymbol methodSymbol)
+			{
+				continue;
+			}
+
+			IMethodSymbol originalMethod = methodSymbol.ReducedFrom ?? methodSymbol;
+			if (originalMethod.ContainingType?.Name != "SubstituteExtensions" ||
+			    originalMethod.ContainingType.ContainingNamespace?.ToDisplayString() != "NSubstitute")
+			{
+				continue;
+			}
+
+			if (!IsTrackedMockReceiver(memberAccess.Expression, semanticModel, mockSymbol, cancellationToken))
+			{
+				continue;
+			}
+
+			MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				memberAccess.Expression,
+				SyntaxFactory.IdentifierName("Mock"));
+			MemberAccessExpressionSyntax clearAccess = SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				mockAccess,
+				SyntaxFactory.IdentifierName("ClearAllInteractions"));
+
+			result[invocation] = SyntaxFactory.InvocationExpression(clearAccess, SyntaxFactory.ArgumentList())
+				.WithTriviaFrom(invocation);
 		}
 
 		return result;
