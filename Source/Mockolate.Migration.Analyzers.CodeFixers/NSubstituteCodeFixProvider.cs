@@ -248,8 +248,8 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				if (TryBuildSequentialOuter(outerInvocation, configuratorMethod, setupInvocation,
 					    out InvocationExpressionSyntax? sequentialReplacement))
 				{
-					// Multi-arg Returns/Throws/etc. — replace the WHOLE outer expression so the call list expands
-					// into a chain of single-arg calls (Mockolate has no multi-arg overloads).
+					// Multi-arg Returns — replace the WHOLE outer expression so the call list expands
+					// into a chain of single-arg calls (Mockolate has no matching multi-arg overload).
 					result[outerInvocation] = sequentialReplacement;
 				}
 				else
@@ -286,8 +286,8 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	}
 
 	/// <summary>
-	///     When <paramref name="configuratorMethod" /> is <c>Returns</c> or <c>Throws</c> with more than one argument,
-	///     splits it into a chain of single-argument calls (Mockolate has no multi-arg overload). Returns
+	///     When <paramref name="configuratorMethod" /> is <c>Returns</c> with more than one argument, splits it
+	///     into a chain of single-argument calls (Mockolate has no multi-arg overload). Returns
 	///     <see langword="false" /> when no rewrite is needed.
 	/// </summary>
 	private static bool TryBuildSequentialOuter(InvocationExpressionSyntax outerInvocation,
@@ -296,7 +296,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	{
 		replacement = null;
 
-		if (configuratorMethod is not ("Returns" or "Throws"))
+		if (configuratorMethod is not "Returns")
 		{
 			return false;
 		}
@@ -314,7 +314,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 					SyntaxKind.SimpleMemberAccessExpression,
 					current,
 					SyntaxFactory.IdentifierName(configuratorMethod)),
-				SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(arg.WithoutTrivia())));
+				SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(arg)));
 		}
 
 		replacement = ((InvocationExpressionSyntax)current).WithTriviaFrom(outerInvocation);
