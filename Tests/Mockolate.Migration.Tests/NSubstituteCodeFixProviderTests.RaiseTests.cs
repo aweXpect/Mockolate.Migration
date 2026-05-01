@@ -8,6 +8,41 @@ public partial class NSubstituteCodeFixProviderTests
 	public sealed class RaiseTests
 	{
 		[Fact]
+		public async Task PlusEqualsOnDelegateProperty_IsNotRewrittenAsRaise()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using NSubstitute;
+
+				public interface IFoo { Action<int> Handler { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Handler += x => { };
+					}
+				}
+				""",
+				"""
+				using System;
+				using NSubstitute;
+				using Mockolate;
+
+				public interface IFoo { Action<int> Handler { get; set; } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Handler += x => { };
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task RaiseEvent_DelegateType_ForwardsArgsWithoutType()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
@@ -72,7 +107,75 @@ public partial class NSubstituteCodeFixProviderTests
 					public void Test()
 					{
 						var sub = IFoo.CreateMock();
-						sub.Mock.Raise.MyEvent(null, EventArgs.Empty);
+						sub.Mock.Raise.MyEvent(null, global::System.EventArgs.Empty);
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task RaiseEvent_NoArgs_WithoutSystemUsing_EmitsFullyQualifiedEventArgs()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { event System.EventHandler MyEvent; }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.MyEvent += Raise.Event();
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+
+				public interface IFoo { event System.EventHandler MyEvent; }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Raise.MyEvent(null, global::System.EventArgs.Empty);
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task RaiseEvent_QualifiedNSubstituteAccess_IsRewritten()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using NSubstitute;
+
+				public interface IFoo { event Action<int> MyEvent; }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.MyEvent += NSubstitute.Raise.Event<Action<int>>(123);
+					}
+				}
+				""",
+				"""
+				using System;
+				using NSubstitute;
+				using Mockolate;
+
+				public interface IFoo { event Action<int> MyEvent; }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Raise.MyEvent(123);
 					}
 				}
 				""");

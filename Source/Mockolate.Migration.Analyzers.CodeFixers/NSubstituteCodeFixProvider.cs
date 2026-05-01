@@ -286,8 +286,19 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				continue;
 			}
 
-			if (raiseInvocation.Expression is not MemberAccessExpressionSyntax raiseAccess ||
-			    raiseAccess.Expression is not IdentifierNameSyntax { Identifier.Text: "Raise", })
+			if (semanticModel.GetSymbolInfo(eventAccess, cancellationToken).Symbol is not IEventSymbol)
+			{
+				continue;
+			}
+
+			if (raiseInvocation.Expression is not MemberAccessExpressionSyntax raiseAccess)
+			{
+				continue;
+			}
+
+			if (semanticModel.GetSymbolInfo(raiseInvocation, cancellationToken).Symbol is not IMethodSymbol raiseMethodSymbol ||
+			    raiseMethodSymbol.ContainingType?.Name != "Raise" ||
+			    raiseMethodSymbol.ContainingType.ContainingNamespace?.ToDisplayString() != "NSubstitute")
 			{
 				continue;
 			}
@@ -332,10 +343,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				return SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(
 				[
 					SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)),
-					SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(
-						SyntaxKind.SimpleMemberAccessExpression,
-						SyntaxFactory.IdentifierName("EventArgs"),
-						SyntaxFactory.IdentifierName("Empty"))),
+					EventArgsEmptyArgument(),
 				]));
 			}
 
@@ -349,10 +357,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				return SyntaxFactory.ArgumentList(SyntaxFactory.SeparatedList(
 				[
 					SyntaxFactory.Argument(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)),
-					SyntaxFactory.Argument(SyntaxFactory.MemberAccessExpression(
-						SyntaxKind.SimpleMemberAccessExpression,
-						SyntaxFactory.IdentifierName("EventArgs"),
-						SyntaxFactory.IdentifierName("Empty"))),
+					EventArgsEmptyArgument(),
 				]));
 			}
 
@@ -370,6 +375,10 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 
 		return raiseArgs;
 	}
+
+	// Fully qualified so the rewrite compiles even when the source file does not have `using System;`.
+	private static ArgumentSyntax EventArgsEmptyArgument() =>
+		SyntaxFactory.Argument(SyntaxFactory.ParseExpression("global::System.EventArgs.Empty"));
 
 	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildClearReceivedCallsReplacements(
 		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
