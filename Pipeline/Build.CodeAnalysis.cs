@@ -22,9 +22,6 @@ partial class Build
 				.AddOpenCoverPaths(TestResultsDirectory / "reports" / "OpenCover.xml")
 				.SetPullRequestOrBranchName(GitHubActions, GitVersion)
 				.SetVersion(GitVersion.SemVer)
-				.AddSourceExclusions(
-					"**/Mockolate.Migration.MoqPlayground/**/*",
-					"**/Mockolate.Migration.NSubstitutePlayground/**/*")
 				.SetToken(SonarToken));
 		});
 
