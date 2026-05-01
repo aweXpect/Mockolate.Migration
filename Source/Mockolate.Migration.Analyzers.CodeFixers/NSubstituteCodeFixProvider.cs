@@ -29,7 +29,6 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		"ThrowsForAnyArgs",
 		"ThrowsAsync",
 		"ThrowsAsyncForAnyArgs",
-		"AndDoes",
 	];
 
 	/// <inheritdoc />
@@ -80,6 +79,9 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> whenDoReplacements =
 			FindAndBuildWhenDoReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
+		HashSet<InvocationExpressionSyntax> andDoesRenames =
+			FindAndDoesRenames(allInvocations, semanticModel, mockSymbol, cancellationToken);
+
 		List<SyntaxNode> nodesToReplace = [substituteCall,];
 		nodesToReplace.AddRange(setupReplacements.Keys);
 		nodesToReplace.AddRange(verifyReplacements.Keys);
@@ -87,10 +89,11 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		nodesToReplace.AddRange(raiseReplacements.Keys);
 		nodesToReplace.AddRange(whenDoReplacements.Keys);
 		nodesToReplace.AddRange(propertyVerifyReplacements.Keys);
+		nodesToReplace.AddRange(andDoesRenames);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
-			(original, _) =>
+			(original, rewritten) =>
 			{
 				if (original == substituteCall)
 				{
@@ -117,6 +120,15 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 					if (whenDoReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? whenDoReplacement))
 					{
 						return whenDoReplacement;
+					}
+
+					if (andDoesRenames.Contains(invocation) &&
+					    rewritten is InvocationExpressionSyntax rewrittenInvocation &&
+					    rewrittenInvocation.Expression is MemberAccessExpressionSyntax rewrittenAccess)
+					{
+						// The inner setup rewrite has already been applied to `rewritten` — just rename AndDoes → Do.
+						return rewrittenInvocation.WithExpression(
+							rewrittenAccess.WithName(SyntaxFactory.IdentifierName("Do")));
 					}
 				}
 
@@ -397,6 +409,71 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		}
 
 		return SyntaxFactory.IdentifierName(targetName);
+	}
+
+	/// <summary>
+	///     Identifies trailing <c>.AndDoes(callback)</c> invocations whose call chain bottoms out at the tracked
+	///     mock symbol, so the dispatcher can rename them to <c>.Do(...)</c> after the inner setup rewrite has
+	///     already been applied via Roslyn's <c>ReplaceNodes</c> nested-rewrite mechanism.
+	/// </summary>
+	private static HashSet<InvocationExpressionSyntax> FindAndDoesRenames(
+		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		HashSet<InvocationExpressionSyntax> result = [];
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return result;
+		}
+
+		foreach (InvocationExpressionSyntax invocation in allInvocations)
+		{
+			if (invocation.Expression is not MemberAccessExpressionSyntax access ||
+			    access.Name.Identifier.Text != "AndDoes")
+			{
+				continue;
+			}
+
+			if (ChainResolvesToMock(access.Expression, semanticModel, mockSymbol, cancellationToken))
+			{
+				result.Add(invocation);
+			}
+		}
+
+		return result;
+	}
+
+	/// <summary>
+	///     Walks a call chain (alternating <see cref="InvocationExpressionSyntax" />/<see cref="MemberAccessExpressionSyntax" />
+	///     nodes) and returns <see langword="true" /> when the chain's leftmost receiver is the tracked
+	///     <paramref name="mockSymbol" />.
+	/// </summary>
+	private static bool ChainResolvesToMock(ExpressionSyntax expression, SemanticModel semanticModel,
+		ISymbol mockSymbol, CancellationToken cancellationToken)
+	{
+		ExpressionSyntax current = expression;
+		while (true)
+		{
+			SymbolInfo info = semanticModel.GetSymbolInfo(current, cancellationToken);
+			if (SymbolEqualityComparer.Default.Equals(info.Symbol, mockSymbol))
+			{
+				return true;
+			}
+
+			switch (current)
+			{
+				case InvocationExpressionSyntax inner when inner.Expression is MemberAccessExpressionSyntax innerAccess:
+					current = innerAccess.Expression;
+					continue;
+				case MemberAccessExpressionSyntax memberAccess:
+					current = memberAccess.Expression;
+					continue;
+				default:
+					return false;
+			}
+		}
 	}
 
 	/// <summary>
