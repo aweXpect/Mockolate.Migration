@@ -443,5 +443,79 @@ public partial class NSubstituteCodeFixProviderTests
 					}
 				}
 				""");
+
+		[Fact]
+		public async Task ThrowsForAnyArgsSequential_SplitsAndKeepsAnyParameters()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Bar(default).ThrowsForAnyArgs(new InvalidOperationException(), new ArgumentException());
+					}
+				}
+				""",
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+				using Mockolate;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Setup.Bar(default).AnyParameters().Throws(new InvalidOperationException()).Throws(new ArgumentException());
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task ThrowsForAnyArgsWithException_AddsAnyParametersAndRenamesToThrows()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Bar(default).ThrowsForAnyArgs(new InvalidOperationException());
+					}
+				}
+				""",
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+				using Mockolate;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Setup.Bar(default).AnyParameters().Throws(new InvalidOperationException());
+					}
+				}
+				""");
 	}
 }

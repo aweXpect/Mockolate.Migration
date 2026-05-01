@@ -297,7 +297,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	}
 
 	/// <summary>
-	///     Tries to build an outer-level replacement for the configurator chain. Three cases trigger this:
+	///     Tries to build an outer-level replacement for the configurator chain. Two cases trigger this:
 	///     <list type="bullet">
 	///         <item>Multi-arg <c>Returns</c>/<c>Throws</c> — split into a chain of single-arg calls.</item>
 	///         <item>
@@ -376,7 +376,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 						SyntaxKind.SimpleMemberAccessExpression,
 						current,
 						RenameConfiguratorIdentifier(outerInvocation, targetMethod)),
-					SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(arg.WithoutTrivia())));
+					SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(arg)));
 			}
 		}
 
