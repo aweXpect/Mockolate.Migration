@@ -470,15 +470,6 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			.WithTriviaFrom(outerInvocation);
 
 	/// <summary>
-	///     Constructs leading trivia that prepends a TODO comment about registering the nested property chain in
-	///     the Mockolate setup. The comment's indentation matches the line the original expression was on.
-	/// </summary>
-	private static SyntaxTriviaList BuildNestedTodoTrivia(InvocationExpressionSyntax outerInvocation,
-		ExpressionSyntax navigationChainRoot) =>
-		AppendTodoComment(outerInvocation.GetLeadingTrivia(), outerInvocation,
-			$"// TODO: register the nested '{navigationChainRoot}' chain explicitly in the mock setup (Mockolate doesn't auto-mock recursively)");
-
-	/// <summary>
 	///     Leading trivia for a TODO comment alerting the user that a CallInfo-based callback could not be
 	///     rewritten automatically — the original lambda is preserved so the user can do it by hand.
 	/// </summary>
@@ -1562,7 +1553,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			}
 		}
 
-		CSharpSyntaxNode newBody = (CSharpSyntaxNode)lambda.Body.ReplaceNodes(replacements.Keys,
+		CSharpSyntaxNode newBody = lambda.Body.ReplaceNodes(replacements.Keys,
 			(orig, _) => replacements[orig]);
 
 		SeparatedSyntaxList<ParameterSyntax> newParams = SyntaxFactory.SeparatedList(
