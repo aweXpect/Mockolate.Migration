@@ -323,7 +323,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			InvocationExpressionSyntax setupCall = SyntaxFactory.InvocationExpression(setupAccess, transformedArgs);
 
 			(string trailingName, ArgumentListSyntax trailingArgs) = trailingMethod == "DoNotCallBase"
-				? ("SkippingBaseClass", SyntaxFactory.ArgumentList())
+				? ("SkippingBaseClass", trailingInvocation.ArgumentList)
 				: ("Do", trailingInvocation.ArgumentList);
 
 			MemberAccessExpressionSyntax trailingMember = SyntaxFactory.MemberAccessExpression(
