@@ -618,26 +618,22 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 
 			// Got pattern: `_ = sub.Received().Prop`
 			if (assignment.Left is IdentifierNameSyntax { Identifier.Text: "_", } &&
-			    TryExtractReceivedPropertyAccess(assignment.Right, semanticModel, mockSymbol, cancellationToken,
-				    out ExpressionSyntax? gotMockReceiver, out SimpleNameSyntax? gotPropertyName,
-				    out string? gotReceivedMethod, out ArgumentListSyntax? gotReceivedArgs))
+			    TryExtractReceivedPropertyAccess(assignment.Right, semanticModel, mockSymbol, cancellationToken) is { } got)
 			{
-				result[assignment] = BuildPropertyVerifyChain(gotMockReceiver, gotPropertyName, "Got",
-						SyntaxFactory.ArgumentList(), gotReceivedMethod, gotReceivedArgs)
+				result[assignment] = BuildPropertyVerifyChain(got.MockReceiver, got.PropertyName, "Got",
+						SyntaxFactory.ArgumentList(), got.ReceivedMethod, got.ReceivedArgs)
 					.WithTriviaFrom(assignment);
 				continue;
 			}
 
 			// Set pattern: `sub.Received().Prop = value`
-			if (TryExtractReceivedPropertyAccess(assignment.Left, semanticModel, mockSymbol, cancellationToken,
-				    out ExpressionSyntax? setMockReceiver, out SimpleNameSyntax? setPropertyName,
-				    out string? setReceivedMethod, out ArgumentListSyntax? setReceivedArgs))
+			if (TryExtractReceivedPropertyAccess(assignment.Left, semanticModel, mockSymbol, cancellationToken) is { } set)
 			{
 				ArgumentListSyntax setArgs = SyntaxFactory.ArgumentList(
 					SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(assignment.Right.WithoutTrivia())));
 
-				result[assignment] = BuildPropertyVerifyChain(setMockReceiver, setPropertyName, "Set",
-						setArgs, setReceivedMethod, setReceivedArgs)
+				result[assignment] = BuildPropertyVerifyChain(set.MockReceiver, set.PropertyName, "Set",
+						setArgs, set.ReceivedMethod, set.ReceivedArgs)
 					.WithTriviaFrom(assignment);
 			}
 		}
@@ -645,39 +641,29 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		return result;
 	}
 
-	private static bool TryExtractReceivedPropertyAccess(ExpressionSyntax expression,
-		SemanticModel semanticModel, ISymbol mockSymbol, CancellationToken cancellationToken,
-		out ExpressionSyntax? mockReceiver, out SimpleNameSyntax? propertyName,
-		out string? receivedMethod, out ArgumentListSyntax? receivedArgs)
+	private static (ExpressionSyntax MockReceiver, SimpleNameSyntax PropertyName, string ReceivedMethod,
+		ArgumentListSyntax ReceivedArgs)? TryExtractReceivedPropertyAccess(ExpressionSyntax expression,
+			SemanticModel semanticModel, ISymbol mockSymbol, CancellationToken cancellationToken)
 	{
-		mockReceiver = null;
-		propertyName = null;
-		receivedMethod = null;
-		receivedArgs = null;
-
 		if (expression is not MemberAccessExpressionSyntax propertyAccess ||
 		    propertyAccess.Expression is not InvocationExpressionSyntax receivedInvocation ||
 		    receivedInvocation.Expression is not MemberAccessExpressionSyntax receivedAccess)
 		{
-			return false;
+			return null;
 		}
 
 		string method = receivedAccess.Name.Identifier.Text;
 		if (method is not ("Received" or "DidNotReceive"))
 		{
-			return false;
+			return null;
 		}
 
 		if (!IsTrackedMockReceiver(receivedAccess.Expression, semanticModel, mockSymbol, cancellationToken))
 		{
-			return false;
+			return null;
 		}
 
-		mockReceiver = receivedAccess.Expression;
-		propertyName = propertyAccess.Name;
-		receivedMethod = method;
-		receivedArgs = receivedInvocation.ArgumentList;
-		return true;
+		return (receivedAccess.Expression, propertyAccess.Name, method, receivedInvocation.ArgumentList);
 	}
 
 	private static InvocationExpressionSyntax BuildPropertyVerifyChain(ExpressionSyntax? mockReceiver,
