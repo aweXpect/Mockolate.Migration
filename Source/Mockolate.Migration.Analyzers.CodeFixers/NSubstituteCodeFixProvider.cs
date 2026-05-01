@@ -68,6 +68,9 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> verifyReplacements =
 			FindAndBuildVerifyReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
+		Dictionary<AssignmentExpressionSyntax, InvocationExpressionSyntax> propertyVerifyReplacements =
+			FindAndBuildPropertyVerifyReplacements(compilationUnit, semanticModel, mockSymbol, cancellationToken);
+
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> clearReplacements =
 			FindAndBuildClearReceivedCallsReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
@@ -83,6 +86,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		nodesToReplace.AddRange(clearReplacements.Keys);
 		nodesToReplace.AddRange(raiseReplacements.Keys);
 		nodesToReplace.AddRange(whenDoReplacements.Keys);
+		nodesToReplace.AddRange(propertyVerifyReplacements.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
@@ -116,10 +120,17 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 					}
 				}
 
-				if (original is AssignmentExpressionSyntax assignment &&
-				    raiseReplacements.TryGetValue(assignment, out InvocationExpressionSyntax? raiseReplacement))
+				if (original is AssignmentExpressionSyntax assignment)
 				{
-					return raiseReplacement;
+					if (raiseReplacements.TryGetValue(assignment, out InvocationExpressionSyntax? raiseReplacement))
+					{
+						return raiseReplacement;
+					}
+
+					if (propertyVerifyReplacements.TryGetValue(assignment, out InvocationExpressionSyntax? propVerifyReplacement))
+					{
+						return propVerifyReplacement;
+					}
 				}
 
 				return original;
@@ -132,7 +143,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			compilationUnit = compilationUnit.AddUsings(usingDirective);
 		}
 
-		if (verifyReplacements.Count > 0)
+		if (verifyReplacements.Count > 0 || propertyVerifyReplacements.Count > 0)
 		{
 			bool hasVerifyUsing = compilationUnit.Usings.Any(u => u.Name?.ToString() == "Mockolate.Verify");
 			if (!hasVerifyUsing)
@@ -552,6 +563,124 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		}
 
 		return result;
+	}
+
+	/// <summary>
+	///     Translates property-style verifications:
+	///     <list type="bullet">
+	///         <item><c>_ = sub.Received().Prop</c> → <c>sub.Mock.Verify.Prop.Got().AtLeastOnce()</c></item>
+	///         <item><c>sub.Received().Prop = v</c> → <c>sub.Mock.Verify.Prop.Set(v).AtLeastOnce()</c></item>
+	///     </list>
+	///     <c>Received(n)</c> / <c>DidNotReceive()</c> map to <c>Exactly(n)</c>/<c>Once()</c>/<c>Never()</c> in the same way as method-style.
+	/// </summary>
+	private static Dictionary<AssignmentExpressionSyntax, InvocationExpressionSyntax> FindAndBuildPropertyVerifyReplacements(
+		CompilationUnitSyntax compilationUnit,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		Dictionary<AssignmentExpressionSyntax, InvocationExpressionSyntax> result = [];
+
+		foreach (AssignmentExpressionSyntax assignment in compilationUnit.DescendantNodes().OfType<AssignmentExpressionSyntax>())
+		{
+			if (!assignment.IsKind(SyntaxKind.SimpleAssignmentExpression))
+			{
+				continue;
+			}
+
+			// Got pattern: `_ = sub.Received().Prop`
+			if (assignment.Left is IdentifierNameSyntax { Identifier.Text: "_", } &&
+			    TryExtractReceivedPropertyAccess(assignment.Right, semanticModel, mockSymbol, cancellationToken,
+				    out ExpressionSyntax? gotMockReceiver, out SimpleNameSyntax? gotPropertyName,
+				    out string? gotReceivedMethod, out ArgumentListSyntax? gotReceivedArgs))
+			{
+				result[assignment] = BuildPropertyVerifyChain(gotMockReceiver, gotPropertyName, "Got",
+						SyntaxFactory.ArgumentList(), gotReceivedMethod, gotReceivedArgs)
+					.WithTriviaFrom(assignment);
+				continue;
+			}
+
+			// Set pattern: `sub.Received().Prop = value`
+			if (TryExtractReceivedPropertyAccess(assignment.Left, semanticModel, mockSymbol, cancellationToken,
+				    out ExpressionSyntax? setMockReceiver, out SimpleNameSyntax? setPropertyName,
+				    out string? setReceivedMethod, out ArgumentListSyntax? setReceivedArgs))
+			{
+				ArgumentListSyntax setArgs = SyntaxFactory.ArgumentList(
+					SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(assignment.Right.WithoutTrivia())));
+
+				result[assignment] = BuildPropertyVerifyChain(setMockReceiver, setPropertyName, "Set",
+						setArgs, setReceivedMethod, setReceivedArgs)
+					.WithTriviaFrom(assignment);
+			}
+		}
+
+		return result;
+	}
+
+	private static bool TryExtractReceivedPropertyAccess(ExpressionSyntax expression,
+		SemanticModel semanticModel, ISymbol mockSymbol, CancellationToken cancellationToken,
+		out ExpressionSyntax? mockReceiver, out SimpleNameSyntax? propertyName,
+		out string? receivedMethod, out ArgumentListSyntax? receivedArgs)
+	{
+		mockReceiver = null;
+		propertyName = null;
+		receivedMethod = null;
+		receivedArgs = null;
+
+		if (expression is not MemberAccessExpressionSyntax propertyAccess ||
+		    propertyAccess.Expression is not InvocationExpressionSyntax receivedInvocation ||
+		    receivedInvocation.Expression is not MemberAccessExpressionSyntax receivedAccess)
+		{
+			return false;
+		}
+
+		string method = receivedAccess.Name.Identifier.Text;
+		if (method is not ("Received" or "DidNotReceive"))
+		{
+			return false;
+		}
+
+		if (!IsTrackedMockReceiver(receivedAccess.Expression, semanticModel, mockSymbol, cancellationToken))
+		{
+			return false;
+		}
+
+		mockReceiver = receivedAccess.Expression;
+		propertyName = propertyAccess.Name;
+		receivedMethod = method;
+		receivedArgs = receivedInvocation.ArgumentList;
+		return true;
+	}
+
+	private static InvocationExpressionSyntax BuildPropertyVerifyChain(ExpressionSyntax? mockReceiver,
+		SimpleNameSyntax? propertyName, string accessor, ArgumentListSyntax accessorArgs,
+		string? receivedMethod, ArgumentListSyntax? receivedArgs)
+	{
+		MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
+			SyntaxKind.SimpleMemberAccessExpression,
+			mockReceiver!,
+			SyntaxFactory.IdentifierName("Mock"));
+		MemberAccessExpressionSyntax verifyMember = SyntaxFactory.MemberAccessExpression(
+			SyntaxKind.SimpleMemberAccessExpression,
+			mockAccess,
+			SyntaxFactory.IdentifierName("Verify"));
+		MemberAccessExpressionSyntax propAccess = SyntaxFactory.MemberAccessExpression(
+			SyntaxKind.SimpleMemberAccessExpression,
+			verifyMember,
+			propertyName!.WithoutTrivia());
+		MemberAccessExpressionSyntax accessorAccess = SyntaxFactory.MemberAccessExpression(
+			SyntaxKind.SimpleMemberAccessExpression,
+			propAccess,
+			SyntaxFactory.IdentifierName(accessor));
+		InvocationExpressionSyntax accessorCall = SyntaxFactory.InvocationExpression(accessorAccess, accessorArgs);
+
+		bool isNegative = receivedMethod == "DidNotReceive";
+		return BuildVerifySuffix(accessorCall, isNegative, receivedArgs ?? SyntaxFactory.ArgumentList());
 	}
 
 	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildVerifyReplacements(
