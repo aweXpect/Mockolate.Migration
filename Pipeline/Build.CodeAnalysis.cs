@@ -22,11 +22,9 @@ partial class Build
 				.AddOpenCoverPaths(TestResultsDirectory / "reports" / "OpenCover.xml")
 				.SetPullRequestOrBranchName(GitHubActions, GitVersion)
 				.SetVersion(GitVersion.SemVer)
-				.AddAdditionalParameter("sonar.issue.ignore.multicriteria", "e1,e2")
-				.AddAdditionalParameter("sonar.issue.ignore.multicriteria.e1.ruleKey", "external_roslyn:MockolateM001")
-				.AddAdditionalParameter("sonar.issue.ignore.multicriteria.e1.resourceKey", "**/Mockolate.Migration.MoqPlayground/**/*")
-				.AddAdditionalParameter("sonar.issue.ignore.multicriteria.e2.ruleKey", "external_roslyn:MockolateM002")
-				.AddAdditionalParameter("sonar.issue.ignore.multicriteria.e2.resourceKey", "**/Mockolate.Migration.NSubstitutePlayground/**/*")
+				.AddSourceExclusions(
+					"**/Mockolate.Migration.MoqPlayground/**/*",
+					"**/Mockolate.Migration.NSubstitutePlayground/**/*")
 				.SetToken(SonarToken));
 		});
 

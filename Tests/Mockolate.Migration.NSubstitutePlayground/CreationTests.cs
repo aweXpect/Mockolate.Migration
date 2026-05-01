@@ -7,9 +7,9 @@ namespace Mockolate.Migration.NSubstitutePlayground;
 public class CreationTests
 {
 	[Fact]
-	public async Task SubstituteFor_classWithCtorArgs_constructsWithThoseArgs()
+	public async Task SubstituteFor_class_canConfigureVirtualMemberReturnValue()
 	{
-		// ChocolateRecipe has a parameterless ctor — pass empty args anyway to exercise the overload.
+		// Configure a class substitute's virtual member to return a specific value.
 		ChocolateRecipe recipe = Substitute.For<ChocolateRecipe>();
 		recipe.Name.Returns("Pralines");
 

@@ -37,11 +37,11 @@ public class UnsupportedFeatureTests
 			DefaultValue = DefaultValue.Mock,
 		};
 
-		// Reading a Task-returning member without a setup yields a Task that completes,
-		// rather than a NullReferenceException.
-		Task<bool> result = Task.FromResult(factory.Object.RegisterRecipe("auto"));
+		// Calling an unconfigured Task-returning member yields a Task that completes
+		// (with an auto-mocked default), rather than null/NullReferenceException.
+		IReadOnlyList<ChocolateBar> bars = await factory.Object.BatchBakeAsync(["auto"]);
 
-		await That(await result).IsFalse();
+		await That(bars).IsNotNull();
 	}
 
 	// NOT YET MIGRATED: It.IsNotIn / It.IsIn (set membership matchers)

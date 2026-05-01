@@ -10,7 +10,7 @@ using Range = Moq.Range;
 public class VerifyTests
 {
 	[Fact]
-	public async Task Verify_method_atLeast()
+	public void Verify_method_atLeast()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense(It.IsAny<string>(), It.IsAny<int>())).Returns(true);
@@ -23,7 +23,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task Verify_method_atMost()
+	public void Verify_method_atMost()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense(It.IsAny<string>(), It.IsAny<int>())).Returns(true);
@@ -35,7 +35,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task Verify_method_between()
+	public void Verify_method_between()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense(It.IsAny<string>(), It.IsAny<int>())).Returns(true);
@@ -49,7 +49,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task Verify_method_exactCount()
+	public void Verify_method_exactCount()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense(It.IsAny<string>(), It.IsAny<int>())).Returns(true);
@@ -62,7 +62,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task Verify_method_wasCalledOnce()
+	public void Verify_method_wasCalledOnce()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		Mock<IChocolateFactory> factory = new();
@@ -75,7 +75,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task Verify_method_wasNeverCalled()
+	public void Verify_method_wasNeverCalled()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		Mock<IChocolateFactory> factory = new();
@@ -88,7 +88,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task VerifyGet_property_wasRead()
+	public void VerifyGet_property_wasRead()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupGet(d => d.Name).Returns("Choc-Box");
@@ -100,7 +100,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task VerifySet_anyValue_isMatchedWithItIsAny()
+	public void VerifySet_anyValue_isMatchedWithItIsAny()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupProperty(d => d.TotalDispensed);
@@ -112,7 +112,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task VerifySet_property_wasAssigned()
+	public void VerifySet_property_wasAssigned()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.SetupProperty(d => d.Name);

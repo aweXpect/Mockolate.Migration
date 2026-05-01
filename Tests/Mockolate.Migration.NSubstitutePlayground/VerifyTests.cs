@@ -7,7 +7,7 @@ namespace Mockolate.Migration.NSubstitutePlayground;
 public class VerifyTests
 {
 	[Fact]
-	public async Task ClearReceivedCalls_resetsHistory()
+	public void ClearReceivedCalls_resetsHistory()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense(Arg.Any<string>(), Arg.Any<int>()).Returns(true);
@@ -20,7 +20,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task DidNotReceive_method_wasNeverCalled()
+	public void DidNotReceive_method_wasNeverCalled()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		IChocolateFactory factory = Substitute.For<IChocolateFactory>();
@@ -33,7 +33,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task DidNotReceiveWithAnyArgs_matchesNoInvocation()
+	public void DidNotReceiveWithAnyArgs_matchesNoInvocation()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 
@@ -41,7 +41,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task Received_method_wasCalledOnce()
+	public void Received_method_wasCalledOnce()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		IChocolateFactory factory = Substitute.For<IChocolateFactory>();
@@ -54,7 +54,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task ReceivedExactCount_isHonored()
+	public void ReceivedExactCount_isHonored()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense(Arg.Any<string>(), Arg.Any<int>()).Returns(true);
@@ -67,7 +67,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task ReceivedProperty_was_read()
+	public void ReceivedProperty_was_read()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Name.Returns("Choc-Box");
@@ -79,7 +79,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task ReceivedProperty_was_set()
+	public void ReceivedProperty_was_set()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 
@@ -89,7 +89,7 @@ public class VerifyTests
 	}
 
 	[Fact]
-	public async Task ReceivedWithAnyArgs_matchesAllInvocations()
+	public void ReceivedWithAnyArgs_matchesAllInvocations()
 	{
 		IChocolateDispenser dispenser = Substitute.For<IChocolateDispenser>();
 		dispenser.Dispense(Arg.Any<string>(), Arg.Any<int>()).Returns(true);

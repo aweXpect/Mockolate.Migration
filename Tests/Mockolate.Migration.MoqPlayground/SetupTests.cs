@@ -43,7 +43,7 @@ public class SetupTests
 	}
 
 	[Fact]
-	public async Task Returns_argumentBased_lowercasesTheRecipe()
+	public async Task Returns_argumentBased_evaluatesFromArgument()
 	{
 		Mock<IChocolateDispenser> dispenser = new();
 		dispenser.Setup(d => d.Dispense(It.IsAny<string>())).Returns((string s) => s.Length > 0);
