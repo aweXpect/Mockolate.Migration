@@ -43,6 +43,39 @@ public partial class NSubstituteCodeFixProviderTests
 				""");
 
 		[Fact]
+		public async Task WhenMethod_DoNotCallBase_RewritesToSkippingBaseClass()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public class Foo { public virtual void Bar(string x) { } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<Foo>()|];
+						sub.When(x => x.Bar("hello")).DoNotCallBase();
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+
+				public class Foo { public virtual void Bar(string x) { } }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = Foo.CreateMock();
+						sub.Mock.Setup.Bar("hello").SkippingBaseClass();
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task WhenMethod_WithArgMatcher_TransformsMatcher()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""

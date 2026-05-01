@@ -263,7 +263,9 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 
 	/// <summary>
 	///     Translates <c>sub.When(x =&gt; x.Method(args)).Do(callback)</c> to
-	///     <c>sub.Mock.Setup.Method(args).Do(callback)</c>.
+	///     <c>sub.Mock.Setup.Method(args).Do(callback)</c>, and
+	///     <c>sub.When(x =&gt; x.Method(args)).DoNotCallBase()</c> to
+	///     <c>sub.Mock.Setup.Method(args).SkippingBaseClass()</c>.
 	/// </summary>
 	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildWhenDoReplacements(
 		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
@@ -278,16 +280,21 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 
 		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> result = [];
 
-		foreach (InvocationExpressionSyntax doInvocation in allInvocations)
+		foreach (InvocationExpressionSyntax trailingInvocation in allInvocations)
 		{
-			if (doInvocation.Expression is not MemberAccessExpressionSyntax doAccess ||
-			    doAccess.Name.Identifier.Text != "Do")
+			if (trailingInvocation.Expression is not MemberAccessExpressionSyntax trailingAccess)
 			{
 				continue;
 			}
 
-			// Receiver of .Do(...) must be a When(...) invocation on the tracked mock.
-			if (doAccess.Expression is not InvocationExpressionSyntax whenInvocation ||
+			string trailingMethod = trailingAccess.Name.Identifier.Text;
+			if (trailingMethod is not ("Do" or "DoNotCallBase"))
+			{
+				continue;
+			}
+
+			// Receiver of .Do(...) / .DoNotCallBase() must be a When(...) invocation on the tracked mock.
+			if (trailingAccess.Expression is not InvocationExpressionSyntax whenInvocation ||
 			    whenInvocation.Expression is not MemberAccessExpressionSyntax whenAccess ||
 			    whenAccess.Name.Identifier.Text != "When")
 			{
@@ -312,13 +319,17 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			MemberAccessExpressionSyntax setupAccess = BuildSetupAccess(whenAccess.Expression, lambdaMemberAccess.Name.WithoutTrivia());
 			InvocationExpressionSyntax setupCall = SyntaxFactory.InvocationExpression(setupAccess, transformedArgs);
 
-			MemberAccessExpressionSyntax doMember = SyntaxFactory.MemberAccessExpression(
+			(string trailingName, ArgumentListSyntax trailingArgs) = trailingMethod == "DoNotCallBase"
+				? ("SkippingBaseClass", SyntaxFactory.ArgumentList())
+				: ("Do", trailingInvocation.ArgumentList);
+
+			MemberAccessExpressionSyntax trailingMember = SyntaxFactory.MemberAccessExpression(
 				SyntaxKind.SimpleMemberAccessExpression,
 				setupCall,
-				SyntaxFactory.IdentifierName("Do"));
+				SyntaxFactory.IdentifierName(trailingName));
 
-			result[doInvocation] = SyntaxFactory.InvocationExpression(doMember, doInvocation.ArgumentList)
-				.WithTriviaFrom(doInvocation);
+			result[trailingInvocation] = SyntaxFactory.InvocationExpression(trailingMember, trailingArgs)
+				.WithTriviaFrom(trailingInvocation);
 		}
 
 		return result;
