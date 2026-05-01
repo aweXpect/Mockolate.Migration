@@ -297,9 +297,17 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	}
 
 	/// <summary>
-	///     When <paramref name="configuratorMethod" /> is <c>Returns</c> with more than one argument, splits it
-	///     into a chain of single-argument calls (Mockolate has no multi-arg overload). Returns
-	///     <see langword="false" /> when no rewrite is needed.
+	///     Tries to build an outer-level replacement for the configurator chain. Two cases trigger this:
+	///     <list type="bullet">
+	///         <item>Multi-arg <c>Returns</c>/<c>Throws</c> — split into a chain of single-arg calls.</item>
+	///         <item>
+	///             <c>ReturnsForAnyArgs</c>/<c>ThrowsForAnyArgs</c> — append <c>.AnyParameters()</c> to the setup
+	///             receiver and rename the configurator to its non-<c>ForAnyArgs</c> form (also splitting when
+	///             multi-arg).
+	///         </item>
+	///     </list>
+	///     Returns <see langword="false" /> when the original single-arg <c>Returns</c>/<c>Throws</c>/etc. shape can
+	///     be preserved by the inner-only rewrite.
 	/// </summary>
 	private static bool TryBuildSequentialOuter(InvocationExpressionSyntax outerInvocation,
 		string configuratorMethod, ExpressionSyntax setupReceiver,
@@ -307,29 +315,89 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	{
 		replacement = null;
 
-		if (configuratorMethod is not "Returns")
+		string? targetMethod;
+		bool injectAnyParameters;
+		switch (configuratorMethod)
 		{
-			return false;
+			case "Returns":
+				targetMethod = "Returns";
+				injectAnyParameters = false;
+				break;
+			case "Throws":
+				targetMethod = "Throws";
+				injectAnyParameters = false;
+				break;
+			case "ReturnsForAnyArgs":
+				targetMethod = "Returns";
+				injectAnyParameters = true;
+				break;
+			case "ThrowsForAnyArgs":
+				targetMethod = "Throws";
+				injectAnyParameters = true;
+				break;
+			default:
+				return false;
 		}
 
-		if (outerInvocation.ArgumentList.Arguments.Count <= 1)
+		// Inner-only rewrite still works for single-arg Returns/Throws with no AnyParameters injection.
+		if (!injectAnyParameters && outerInvocation.ArgumentList.Arguments.Count <= 1)
 		{
 			return false;
 		}
 
 		ExpressionSyntax current = setupReceiver;
-		foreach (ArgumentSyntax arg in outerInvocation.ArgumentList.Arguments)
+		if (injectAnyParameters)
 		{
 			current = SyntaxFactory.InvocationExpression(
 				SyntaxFactory.MemberAccessExpression(
 					SyntaxKind.SimpleMemberAccessExpression,
 					current,
-					SyntaxFactory.IdentifierName(configuratorMethod)),
-				SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(arg)));
+					SyntaxFactory.IdentifierName("AnyParameters")),
+				SyntaxFactory.ArgumentList());
+		}
+
+		IReadOnlyList<ArgumentSyntax> outerArgs = outerInvocation.ArgumentList.Arguments;
+		if (outerArgs.Count == 0)
+		{
+			// e.g. ThrowsForAnyArgs<E>() with no value argument — preserve the trailing call shape with no args.
+			current = SyntaxFactory.InvocationExpression(
+				SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					current,
+					RenameConfiguratorIdentifier(outerInvocation, targetMethod)),
+				SyntaxFactory.ArgumentList());
+		}
+		else
+		{
+			foreach (ArgumentSyntax arg in outerArgs)
+			{
+				current = SyntaxFactory.InvocationExpression(
+					SyntaxFactory.MemberAccessExpression(
+						SyntaxKind.SimpleMemberAccessExpression,
+						current,
+						RenameConfiguratorIdentifier(outerInvocation, targetMethod)),
+					SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(arg)));
+			}
 		}
 
 		replacement = ((InvocationExpressionSyntax)current).WithTriviaFrom(outerInvocation);
 		return true;
+	}
+
+	/// <summary>
+	///     Returns the outer call's identifier renamed to <paramref name="targetName" />, preserving any explicit
+	///     type-argument list (so <c>Throws&lt;E&gt;()</c> stays generic when migrating from
+	///     <c>ThrowsForAnyArgs&lt;E&gt;()</c>).
+	/// </summary>
+	private static SimpleNameSyntax RenameConfiguratorIdentifier(InvocationExpressionSyntax outerInvocation, string targetName)
+	{
+		if (outerInvocation.Expression is MemberAccessExpressionSyntax { Name: GenericNameSyntax generic, })
+		{
+			return SyntaxFactory.GenericName(SyntaxFactory.Identifier(targetName))
+				.WithTypeArgumentList(generic.TypeArgumentList);
+		}
+
+		return SyntaxFactory.IdentifierName(targetName);
 	}
 
 	/// <summary>

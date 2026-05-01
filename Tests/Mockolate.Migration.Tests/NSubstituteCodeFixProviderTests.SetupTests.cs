@@ -276,6 +276,72 @@ public partial class NSubstituteCodeFixProviderTests
 				""");
 
 		[Fact]
+		public async Task ReturnsForAnyArgs_AddsAnyParametersAndRenamesToReturns()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { int Bar(int x, string y); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Bar(default, default).ReturnsForAnyArgs(42);
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+
+				public interface IFoo { int Bar(int x, string y); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Setup.Bar(default, default).AnyParameters().Returns(42);
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task ReturnsForAnyArgsSequential_SplitsAndKeepsAnyParameters()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Bar(default).ReturnsForAnyArgs(1, 2, 3);
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Setup.Bar(default).AnyParameters().Returns(1).Returns(2).Returns(3);
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task SequentialPropertyReturns_AreSplitIntoChain()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
@@ -337,6 +403,117 @@ public partial class NSubstituteCodeFixProviderTests
 					{
 						var sub = IFoo.CreateMock();
 						sub.Mock.Setup.Bar(1).Returns(1).Returns(2).Returns(3);
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task ThrowsForAnyArgsGeneric_AddsAnyParametersAndRenamesToThrows()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Bar(default).ThrowsForAnyArgs<InvalidOperationException>();
+					}
+				}
+				""",
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+				using Mockolate;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Setup.Bar(default).AnyParameters().Throws<InvalidOperationException>();
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task ThrowsForAnyArgsSequential_SplitsAndKeepsAnyParameters()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Bar(default).ThrowsForAnyArgs(new InvalidOperationException(), new ArgumentException());
+					}
+				}
+				""",
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+				using Mockolate;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Setup.Bar(default).AnyParameters().Throws(new InvalidOperationException()).Throws(new ArgumentException());
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task ThrowsForAnyArgsWithException_AddsAnyParametersAndRenamesToThrows()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.Bar(default).ThrowsForAnyArgs(new InvalidOperationException());
+					}
+				}
+				""",
+				"""
+				using System;
+				using NSubstitute;
+				using NSubstitute.ExceptionExtensions;
+				using Mockolate;
+
+				public interface IFoo { int Bar(int x); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Setup.Bar(default).AnyParameters().Throws(new InvalidOperationException());
 					}
 				}
 				""");
