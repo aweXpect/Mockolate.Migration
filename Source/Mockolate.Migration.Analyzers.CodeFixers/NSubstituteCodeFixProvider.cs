@@ -452,8 +452,6 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 					raiseArgs.Arguments[0],
 				]));
 			}
-
-			return raiseArgs;
 		}
 
 		return raiseArgs;
@@ -551,7 +549,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			}
 
 			string receivedMethod = receiverAccess.Name.Identifier.Text;
-			if (receivedMethod is not ("Received" or "DidNotReceive"))
+			if (receivedMethod is not ("Received" or "ReceivedWithAnyArgs" or "DidNotReceive" or "DidNotReceiveWithAnyArgs"))
 			{
 				continue;
 			}
@@ -569,7 +567,17 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			MemberAccessExpressionSyntax verifyAccess = BuildVerifyAccess(mockReceiver, methodNameSyntax);
 			InvocationExpressionSyntax verifyInvocation = SyntaxFactory.InvocationExpression(verifyAccess, transformedArgs);
 
-			InvocationExpressionSyntax suffix = BuildVerifySuffix(verifyInvocation, receivedMethod, receiverCall.ArgumentList);
+			InvocationExpressionSyntax verifyTarget = receivedMethod is "ReceivedWithAnyArgs" or "DidNotReceiveWithAnyArgs"
+				? SyntaxFactory.InvocationExpression(
+					SyntaxFactory.MemberAccessExpression(
+						SyntaxKind.SimpleMemberAccessExpression,
+						verifyInvocation,
+						SyntaxFactory.IdentifierName("AnyParameters")),
+					SyntaxFactory.ArgumentList())
+				: verifyInvocation;
+
+			bool isNegative = receivedMethod is "DidNotReceive" or "DidNotReceiveWithAnyArgs";
+			InvocationExpressionSyntax suffix = BuildVerifySuffix(verifyTarget, isNegative, receiverCall.ArgumentList);
 
 			result[outerInvocation] = suffix.WithTriviaFrom(outerInvocation);
 		}
@@ -594,10 +602,12 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	}
 
 	private static InvocationExpressionSyntax BuildVerifySuffix(InvocationExpressionSyntax verifyInvocation,
-		string receivedMethod, ArgumentListSyntax receivedArgs)
+		bool isNegative, ArgumentListSyntax receivedArgs)
 	{
-		// DidNotReceive() → .Never(); Received() → .AtLeastOnce(); Received(n) → .Exactly(n) or .Once() when n is 1.
-		if (receivedMethod == "DidNotReceive")
+		// Negative verifications (DidNotReceive / DidNotReceiveWithAnyArgs) → .Never().
+		// Positive verifications use receivedArgs (the args originally passed to Received(...) ) to choose the count:
+		//   no arguments → .AtLeastOnce(); a single literal 1 → .Once(); otherwise → .Exactly(receivedArgs).
+		if (isNegative)
 		{
 			return AppendCountCall(verifyInvocation, "Never", SyntaxFactory.ArgumentList());
 		}
