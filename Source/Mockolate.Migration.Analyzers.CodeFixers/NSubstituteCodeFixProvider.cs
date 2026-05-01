@@ -218,6 +218,8 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				continue;
 			}
 
+			string configuratorMethod = outerAccess.Name.Identifier.Text;
+
 			// The receiver of the configurator (e.g. .Returns) is either
 			//   sub.Method(args)             — pattern A
 			//   sub.Property                 — pattern B
@@ -238,8 +240,21 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				InvocationExpressionSyntax setupInvocation = SyntaxFactory.InvocationExpression(setupAccess, transformedArgs)
 					.WithTriviaFrom(targetInvocation);
 
-				result[targetInvocation] = setupInvocation;
-				alreadyAccountedFor.Add(targetInvocation);
+				if (TryBuildSequentialOuter(outerInvocation, configuratorMethod, setupInvocation,
+					    out InvocationExpressionSyntax? sequentialReplacement))
+				{
+					// Multi-arg Returns/Throws/etc. — replace the WHOLE outer expression so the call list expands
+					// into a chain of single-arg calls (Mockolate has no multi-arg overloads).
+					result[outerInvocation] = sequentialReplacement;
+					alreadyAccountedFor.Add(outerInvocation);
+					alreadyAccountedFor.Add(targetInvocation);
+				}
+				else
+				{
+					result[targetInvocation] = setupInvocation;
+					alreadyAccountedFor.Add(targetInvocation);
+				}
+
 				continue;
 			}
 
@@ -253,12 +268,58 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				MemberAccessExpressionSyntax setupAccess = BuildSetupAccess(
 					targetPropertyAccess.Expression, targetPropertyAccess.Name);
 
-				result[targetPropertyAccess] = setupAccess.WithTriviaFrom(targetPropertyAccess);
-				alreadyAccountedFor.Add(targetPropertyAccess);
+				if (TryBuildSequentialOuter(outerInvocation, configuratorMethod, setupAccess,
+					    out InvocationExpressionSyntax? sequentialReplacement))
+				{
+					result[outerInvocation] = sequentialReplacement;
+					alreadyAccountedFor.Add(outerInvocation);
+					alreadyAccountedFor.Add(targetPropertyAccess);
+				}
+				else
+				{
+					result[targetPropertyAccess] = setupAccess.WithTriviaFrom(targetPropertyAccess);
+					alreadyAccountedFor.Add(targetPropertyAccess);
+				}
 			}
 		}
 
 		return result;
+	}
+
+	/// <summary>
+	///     When <paramref name="configuratorMethod" /> is <c>Returns</c> or <c>Throws</c> with more than one argument,
+	///     splits it into a chain of single-argument calls (Mockolate has no multi-arg overload). Returns
+	///     <see langword="false" /> when no rewrite is needed.
+	/// </summary>
+	private static bool TryBuildSequentialOuter(InvocationExpressionSyntax outerInvocation,
+		string configuratorMethod, ExpressionSyntax setupReceiver,
+		out InvocationExpressionSyntax? replacement)
+	{
+		replacement = null;
+
+		if (configuratorMethod is not ("Returns" or "Throws"))
+		{
+			return false;
+		}
+
+		if (outerInvocation.ArgumentList.Arguments.Count <= 1)
+		{
+			return false;
+		}
+
+		ExpressionSyntax current = setupReceiver;
+		foreach (ArgumentSyntax arg in outerInvocation.ArgumentList.Arguments)
+		{
+			current = SyntaxFactory.InvocationExpression(
+				SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					current,
+					SyntaxFactory.IdentifierName(configuratorMethod)),
+				SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(arg.WithoutTrivia())));
+		}
+
+		replacement = ((InvocationExpressionSyntax)current).WithTriviaFrom(outerInvocation);
+		return true;
 	}
 
 	/// <summary>
