@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\Source\Mockolate.Migration\Mockolate.Migration.csproj"/>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\Source\Mockolate.Migration.Analyzers\Mockolate.Migration.Analyzers.csproj"
+						  PrivateAssets="all"
+						  ReferenceOutputAssembly="false"
+						  OutputItemType="Analyzer"
+						  SetTargetFramework="TargetFramework=netstandard2.0"/>
+		<ProjectReference Include="..\..\Source\Mockolate.Migration.Analyzers.CodeFixers\Mockolate.Migration.Analyzers.CodeFixers.csproj"
+						  PrivateAssets="all"
+						  ReferenceOutputAssembly="false"
+						  OutputItemType="Analyzer"
+						  SetTargetFramework="TargetFramework=netstandard2.0"/>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="NSubstitute"/>
+	</ItemGroup>
+</Project>

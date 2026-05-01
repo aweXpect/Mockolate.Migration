@@ -2,6 +2,10 @@
   <Folder Name="/Pipeline/">
     <Project Path="Pipeline/Build.csproj" />
   </Folder>
+  <Folder Name="/Playground/">
+    <Project Path="Tests/Mockolate.Migration.MoqPlayground/Mockolate.Migration.MoqPlayground.csproj" />
+    <Project Path="Tests/Mockolate.Migration.NSubstitutePlayground/Mockolate.Migration.NSubstitutePlayground.csproj" />
+  </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/Mockolate.Migration.Example.Tests/Mockolate.Migration.Example.Tests.csproj" />
     <Project Path="Tests/Mockolate.Migration.Tests/Mockolate.Migration.Tests.csproj" />

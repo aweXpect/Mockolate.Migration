@@ -16,6 +16,8 @@ partial class Build
 
 	Project[] UnitTestProjects =>
 	[
+		Solution.Playground.Mockolate_Migration_MoqPlayground,
+		Solution.Playground.Mockolate_Migration_NSubstitutePlayground,
 		Solution.Tests.Mockolate_Migration_Tests,
 	];
 
