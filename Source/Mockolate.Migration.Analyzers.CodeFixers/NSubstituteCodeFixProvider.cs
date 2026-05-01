@@ -268,12 +268,23 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				InvocationExpressionSyntax setupInvocation = SyntaxFactory.InvocationExpression(setupAccess, transformedArgs)
 					.WithTriviaFrom(targetInvocation);
 
-				if (TryBuildSequentialOuter(outerInvocation, configuratorMethod, setupInvocation,
-					    out InvocationExpressionSyntax? sequentialReplacement))
+				bool isNested = targetMemberAccess.Expression is MemberAccessExpressionSyntax;
+				TryBuildSequentialOuter(outerInvocation, configuratorMethod, setupInvocation,
+					out InvocationExpressionSyntax? sequentialReplacement);
+				InvocationExpressionSyntax? outerReplacement = sequentialReplacement
+				                                               ?? (isNested
+					                                               ? BuildSimpleOuter(setupInvocation, outerInvocation, configuratorMethod)
+					                                               : null);
+
+				if (outerReplacement is not null)
 				{
-					// Multi-arg Returns — replace the WHOLE outer expression so the call list expands
-					// into a chain of single-arg calls (Mockolate has no matching multi-arg overload).
-					result[outerInvocation] = sequentialReplacement;
+					if (isNested)
+					{
+						outerReplacement = outerReplacement.WithLeadingTrivia(
+							BuildNestedTodoTrivia(outerInvocation, targetMemberAccess.Expression));
+					}
+
+					result[outerInvocation] = outerReplacement;
 				}
 				else
 				{
@@ -293,10 +304,23 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				MemberAccessExpressionSyntax setupAccess = BuildSetupAccess(
 					targetPropertyAccess.Expression, targetPropertyAccess.Name);
 
-				if (TryBuildSequentialOuter(outerInvocation, configuratorMethod, setupAccess,
-					    out InvocationExpressionSyntax? sequentialReplacement))
+				bool isNestedProperty = targetPropertyAccess.Expression is MemberAccessExpressionSyntax;
+				TryBuildSequentialOuter(outerInvocation, configuratorMethod, setupAccess,
+					out InvocationExpressionSyntax? sequentialPropertyReplacement);
+				InvocationExpressionSyntax? outerPropertyReplacement = sequentialPropertyReplacement
+				                                                       ?? (isNestedProperty
+					                                                       ? BuildSimpleOuter(setupAccess, outerInvocation, configuratorMethod)
+					                                                       : null);
+
+				if (outerPropertyReplacement is not null)
 				{
-					result[outerInvocation] = sequentialReplacement;
+					if (isNestedProperty)
+					{
+						outerPropertyReplacement = outerPropertyReplacement.WithLeadingTrivia(
+							BuildNestedTodoTrivia(outerInvocation, targetPropertyAccess.Expression));
+					}
+
+					result[outerInvocation] = outerPropertyReplacement;
 				}
 				else
 				{
@@ -306,6 +330,42 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		}
 
 		return result;
+	}
+
+	/// <summary>
+	///     Builds the trivial outer replacement <c>setup.{configurator}(args)</c> with the original argument list
+	///     unchanged. Used when an outer replacement is required (e.g. nested-mock TODO injection) but no argument
+	///     transformation is needed.
+	/// </summary>
+	private static InvocationExpressionSyntax BuildSimpleOuter(ExpressionSyntax setupReceiver,
+		InvocationExpressionSyntax outerInvocation, string configuratorMethod) =>
+		SyntaxFactory.InvocationExpression(
+				SyntaxFactory.MemberAccessExpression(
+					SyntaxKind.SimpleMemberAccessExpression,
+					setupReceiver,
+					SyntaxFactory.IdentifierName(configuratorMethod)),
+				outerInvocation.ArgumentList)
+			.WithTriviaFrom(outerInvocation);
+
+	/// <summary>
+	///     Constructs leading trivia that prepends a TODO comment about registering the nested property chain in
+	///     the Mockolate setup. The comment's indentation matches the line the original expression was on.
+	/// </summary>
+	private static SyntaxTriviaList BuildNestedTodoTrivia(InvocationExpressionSyntax outerInvocation,
+		ExpressionSyntax navigationChainRoot)
+	{
+		string chain = navigationChainRoot.ToString();
+		string commentText =
+			$"// TODO: register the nested '{chain}' chain explicitly in the mock setup (Mockolate doesn't auto-mock recursively)";
+
+		SyntaxTriviaList originalLeading = outerInvocation.GetLeadingTrivia();
+		SyntaxTrivia indent = originalLeading.LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia));
+		string endOfLine = DetectLineEnding(outerInvocation.SyntaxTree.GetRoot());
+
+		return originalLeading
+			.Add(SyntaxFactory.Comment(commentText))
+			.Add(SyntaxFactory.EndOfLine(endOfLine))
+			.Add(indent);
 	}
 
 	/// <summary>
@@ -321,7 +381,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	///     Returns <see langword="false" /> when the original single-arg <c>Returns</c>/<c>Throws</c>/etc. shape can
 	///     be preserved by the inner-only rewrite.
 	/// </summary>
-	private static bool TryBuildSequentialOuter(InvocationExpressionSyntax outerInvocation,
+	private static void TryBuildSequentialOuter(InvocationExpressionSyntax outerInvocation,
 		string configuratorMethod, ExpressionSyntax setupReceiver,
 		out InvocationExpressionSyntax? replacement)
 	{
@@ -348,13 +408,13 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				injectAnyParameters = true;
 				break;
 			default:
-				return false;
+				return;
 		}
 
 		// Inner-only rewrite still works for single-arg Returns/Throws with no AnyParameters injection.
 		if (!injectAnyParameters && outerInvocation.ArgumentList.Arguments.Count <= 1)
 		{
-			return false;
+			return;
 		}
 
 		ExpressionSyntax current = setupReceiver;
@@ -393,7 +453,6 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		}
 
 		replacement = ((InvocationExpressionSyntax)current).WithTriviaFrom(outerInvocation);
-		return true;
 	}
 
 	/// <summary>
