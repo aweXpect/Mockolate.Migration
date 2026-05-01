@@ -65,8 +65,12 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		Dictionary<SyntaxNode, SyntaxNode> setupReplacements =
 			FindAndBuildSetupReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
 
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> verifyReplacements =
+			FindAndBuildVerifyReplacements(allInvocations, semanticModel, mockSymbol, cancellationToken);
+
 		List<SyntaxNode> nodesToReplace = [substituteCall,];
 		nodesToReplace.AddRange(setupReplacements.Keys);
+		nodesToReplace.AddRange(verifyReplacements.Keys);
 
 		compilationUnit = compilationUnit.ReplaceNodes(
 			nodesToReplace,
@@ -77,9 +81,15 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 					return creationReplacement.WithTriviaFrom(substituteCall);
 				}
 
-				if (setupReplacements.TryGetValue(original, out SyntaxNode? replacement))
+				if (setupReplacements.TryGetValue(original, out SyntaxNode? setupReplacement))
 				{
-					return replacement;
+					return setupReplacement;
+				}
+
+				if (original is InvocationExpressionSyntax invocation &&
+				    verifyReplacements.TryGetValue(invocation, out InvocationExpressionSyntax? verifyReplacement))
+				{
+					return verifyReplacement;
 				}
 
 				return original;
@@ -90,6 +100,16 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		{
 			UsingDirectiveSyntax usingDirective = BuildUsingDirective(compilationUnit, "Mockolate");
 			compilationUnit = compilationUnit.AddUsings(usingDirective);
+		}
+
+		if (verifyReplacements.Count > 0)
+		{
+			bool hasVerifyUsing = compilationUnit.Usings.Any(u => u.Name?.ToString() == "Mockolate.Verify");
+			if (!hasVerifyUsing)
+			{
+				UsingDirectiveSyntax verifyUsingDirective = BuildUsingDirective(compilationUnit, "Mockolate.Verify");
+				compilationUnit = compilationUnit.AddUsings(verifyUsingDirective);
+			}
 		}
 
 		return document.WithSyntaxRoot(compilationUnit);
@@ -213,6 +233,111 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 
 		return result;
 	}
+
+	private static Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> FindAndBuildVerifyReplacements(
+		IReadOnlyList<InvocationExpressionSyntax> allInvocations,
+		SemanticModel? semanticModel,
+		ISymbol? mockSymbol,
+		CancellationToken cancellationToken)
+	{
+		if (semanticModel is null || mockSymbol is null)
+		{
+			return [];
+		}
+
+		Dictionary<InvocationExpressionSyntax, InvocationExpressionSyntax> result = [];
+
+		foreach (InvocationExpressionSyntax outerInvocation in allInvocations)
+		{
+			if (outerInvocation.Expression is not MemberAccessExpressionSyntax outerAccess)
+			{
+				continue;
+			}
+
+			// outerInvocation is `something.MethodName(args)`; receiver `something` should be `sub.Received(...)`
+			// (or DidNotReceive). The receiver of `sub.Received()` is the tracked mock symbol.
+			if (outerAccess.Expression is not InvocationExpressionSyntax receiverCall ||
+			    receiverCall.Expression is not MemberAccessExpressionSyntax receiverAccess)
+			{
+				continue;
+			}
+
+			string receivedMethod = receiverAccess.Name.Identifier.Text;
+			if (receivedMethod is not ("Received" or "DidNotReceive"))
+			{
+				continue;
+			}
+
+			if (!IsTrackedMockReceiver(receiverAccess.Expression, semanticModel, mockSymbol, cancellationToken))
+			{
+				continue;
+			}
+
+			ExpressionSyntax mockReceiver = receiverAccess.Expression;
+			ArgumentListSyntax transformedArgs =
+				TransformNSubstituteArgReferences(outerInvocation.ArgumentList, semanticModel, cancellationToken);
+			SimpleNameSyntax methodNameSyntax = outerAccess.Name;
+
+			MemberAccessExpressionSyntax verifyAccess = BuildVerifyAccess(mockReceiver, methodNameSyntax);
+			InvocationExpressionSyntax verifyInvocation = SyntaxFactory.InvocationExpression(verifyAccess, transformedArgs);
+
+			InvocationExpressionSyntax suffix = BuildVerifySuffix(verifyInvocation, receivedMethod, receiverCall.ArgumentList);
+
+			result[outerInvocation] = suffix.WithTriviaFrom(outerInvocation);
+		}
+
+		return result;
+	}
+
+	private static MemberAccessExpressionSyntax BuildVerifyAccess(ExpressionSyntax receiver, SimpleNameSyntax memberName)
+	{
+		MemberAccessExpressionSyntax mockAccess = SyntaxFactory.MemberAccessExpression(
+			SyntaxKind.SimpleMemberAccessExpression,
+			receiver,
+			SyntaxFactory.IdentifierName("Mock"));
+		MemberAccessExpressionSyntax verifyMember = SyntaxFactory.MemberAccessExpression(
+			SyntaxKind.SimpleMemberAccessExpression,
+			mockAccess,
+			SyntaxFactory.IdentifierName("Verify"));
+		return SyntaxFactory.MemberAccessExpression(
+			SyntaxKind.SimpleMemberAccessExpression,
+			verifyMember,
+			memberName);
+	}
+
+	private static InvocationExpressionSyntax BuildVerifySuffix(InvocationExpressionSyntax verifyInvocation,
+		string receivedMethod, ArgumentListSyntax receivedArgs)
+	{
+		// DidNotReceive() → .Never(); Received() → .AtLeastOnce(); Received(n) → .Exactly(n) or .Once() when n is 1.
+		if (receivedMethod == "DidNotReceive")
+		{
+			return AppendCountCall(verifyInvocation, "Never", SyntaxFactory.ArgumentList());
+		}
+
+		if (receivedArgs.Arguments.Count == 0)
+		{
+			return AppendCountCall(verifyInvocation, "AtLeastOnce", SyntaxFactory.ArgumentList());
+		}
+
+		// Received(n): when n is the literal integer 1 we collapse to Once(); otherwise pass through to Exactly(n).
+		if (receivedArgs.Arguments.Count == 1 &&
+		    receivedArgs.Arguments[0].Expression is LiteralExpressionSyntax literal &&
+		    literal.Token.Value is 1)
+		{
+			return AppendCountCall(verifyInvocation, "Once", SyntaxFactory.ArgumentList());
+		}
+
+		return AppendCountCall(verifyInvocation, "Exactly", receivedArgs);
+	}
+
+	private static InvocationExpressionSyntax AppendCountCall(InvocationExpressionSyntax verifyInvocation,
+		string methodName, ArgumentListSyntax argList) =>
+		SyntaxFactory.InvocationExpression(
+			SyntaxFactory.MemberAccessExpression(
+				SyntaxKind.SimpleMemberAccessExpression,
+				verifyInvocation,
+				SyntaxFactory.IdentifierName(methodName)),
+			argList);
 
 	/// <summary>
 	///     Returns <see langword="true" /> when <paramref name="expression" /> ultimately resolves to the tracked
