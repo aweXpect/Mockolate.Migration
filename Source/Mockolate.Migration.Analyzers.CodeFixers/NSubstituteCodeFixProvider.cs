@@ -551,7 +551,7 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			}
 
 			string receivedMethod = receiverAccess.Name.Identifier.Text;
-			if (receivedMethod is not ("Received" or "DidNotReceive"))
+			if (receivedMethod is not ("Received" or "ReceivedWithAnyArgs" or "DidNotReceive" or "DidNotReceiveWithAnyArgs"))
 			{
 				continue;
 			}
@@ -567,9 +567,21 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			SimpleNameSyntax methodNameSyntax = outerAccess.Name;
 
 			MemberAccessExpressionSyntax verifyAccess = BuildVerifyAccess(mockReceiver, methodNameSyntax);
-			InvocationExpressionSyntax verifyInvocation = SyntaxFactory.InvocationExpression(verifyAccess, transformedArgs);
+			ExpressionSyntax verifyInvocation = SyntaxFactory.InvocationExpression(verifyAccess, transformedArgs);
 
-			InvocationExpressionSyntax suffix = BuildVerifySuffix(verifyInvocation, receivedMethod, receiverCall.ArgumentList);
+			if (receivedMethod is "ReceivedWithAnyArgs" or "DidNotReceiveWithAnyArgs")
+			{
+				verifyInvocation = SyntaxFactory.InvocationExpression(
+					SyntaxFactory.MemberAccessExpression(
+						SyntaxKind.SimpleMemberAccessExpression,
+						verifyInvocation,
+						SyntaxFactory.IdentifierName("AnyParameters")),
+					SyntaxFactory.ArgumentList());
+			}
+
+			bool isNegative = receivedMethod is "DidNotReceive" or "DidNotReceiveWithAnyArgs";
+			InvocationExpressionSyntax suffix = BuildVerifySuffix(
+				(InvocationExpressionSyntax)verifyInvocation, isNegative, receiverCall.ArgumentList);
 
 			result[outerInvocation] = suffix.WithTriviaFrom(outerInvocation);
 		}
@@ -594,10 +606,10 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 	}
 
 	private static InvocationExpressionSyntax BuildVerifySuffix(InvocationExpressionSyntax verifyInvocation,
-		string receivedMethod, ArgumentListSyntax receivedArgs)
+		bool isNegative, ArgumentListSyntax receivedArgs)
 	{
 		// DidNotReceive() → .Never(); Received() → .AtLeastOnce(); Received(n) → .Exactly(n) or .Once() when n is 1.
-		if (receivedMethod == "DidNotReceive")
+		if (isNegative)
 		{
 			return AppendCountCall(verifyInvocation, "Never", SyntaxFactory.ArgumentList());
 		}

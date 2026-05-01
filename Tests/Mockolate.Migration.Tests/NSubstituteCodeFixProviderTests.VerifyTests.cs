@@ -42,6 +42,40 @@ public partial class NSubstituteCodeFixProviderTests
 				""");
 
 		[Fact]
+		public async Task DidNotReceiveWithAnyArgs_AddsAnyParametersAndNever()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { void Bar(int x, string y); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.DidNotReceiveWithAnyArgs().Bar(default, default);
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+				using Mockolate.Verify;
+
+				public interface IFoo { void Bar(int x, string y); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Verify.Bar(default, default).AnyParameters().Never();
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task Received_IsRewrittenToAtLeastOnce()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""
@@ -141,6 +175,40 @@ public partial class NSubstituteCodeFixProviderTests
 					{
 						var sub = IFoo.CreateMock();
 						sub.Mock.Verify.Bar(1).Once();
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task ReceivedWithAnyArgs_AddsAnyParameters()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				using NSubstitute;
+
+				public interface IFoo { void Bar(int x, string y); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|Substitute.For<IFoo>()|];
+						sub.ReceivedWithAnyArgs().Bar(default, default);
+					}
+				}
+				""",
+				"""
+				using NSubstitute;
+				using Mockolate;
+				using Mockolate.Verify;
+
+				public interface IFoo { void Bar(int x, string y); }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+						sub.Mock.Verify.Bar(default, default).AnyParameters().AtLeastOnce();
 					}
 				}
 				""");
