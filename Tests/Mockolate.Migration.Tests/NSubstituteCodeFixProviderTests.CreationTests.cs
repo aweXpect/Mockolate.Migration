@@ -8,6 +8,62 @@ public class NSubstituteCodeFixProviderTests
 	public sealed class CreationTests
 	{
 		[Fact]
+		public async Task SubstituteFor_FullyQualified_IsReplaced()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|NSubstitute.Substitute.For<IFoo>()|];
+					}
+				}
+				""",
+				"""
+				using Mockolate;
+
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+					}
+				}
+				""");
+
+		[Fact]
+		public async Task SubstituteFor_GlobalQualified_IsReplaced()
+			=> await Verifier.VerifyCodeFixAsync(
+				"""
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = [|global::NSubstitute.Substitute.For<IFoo>()|];
+					}
+				}
+				""",
+				"""
+				using Mockolate;
+
+				public interface IFoo { }
+
+				public class Tests
+				{
+					public void Test()
+					{
+						var sub = IFoo.CreateMock();
+					}
+				}
+				""");
+
+		[Fact]
 		public async Task SubstituteFor_IsReplaced()
 			=> await Verifier.VerifyCodeFixAsync(
 				"""

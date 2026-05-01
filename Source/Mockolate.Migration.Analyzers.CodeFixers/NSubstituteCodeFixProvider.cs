@@ -28,7 +28,9 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 			return document;
 		}
 
-		InvocationExpressionSyntax? substituteCall = FindSubstituteCreationCall(expressionSyntax);
+		SemanticModel? semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
+
+		InvocationExpressionSyntax? substituteCall = FindSubstituteCreationCall(expressionSyntax, semanticModel, cancellationToken);
 		if (substituteCall is null)
 		{
 			return document;
@@ -52,12 +54,28 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 		return document.WithSyntaxRoot(compilationUnit);
 	}
 
-	private static InvocationExpressionSyntax? FindSubstituteCreationCall(ExpressionSyntax expressionSyntax)
+	private static InvocationExpressionSyntax? FindSubstituteCreationCall(
+		ExpressionSyntax expressionSyntax,
+		SemanticModel? semanticModel,
+		CancellationToken cancellationToken)
 	{
 		foreach (InvocationExpressionSyntax invocation in expressionSyntax.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
 		{
-			if (invocation.Expression is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.Text: "Substitute", }, Name: var name, } &&
-			    name.Identifier.Text is "For" or "ForPartsOf" or "ForTypeForwardingTo")
+			if (invocation.Expression is not MemberAccessExpressionSyntax memberAccess)
+			{
+				continue;
+			}
+
+			if (memberAccess.Name.Identifier.Text is not ("For" or "ForPartsOf" or "ForTypeForwardingTo"))
+			{
+				continue;
+			}
+
+			// Use the semantic model to match NSubstitute.Substitute regardless of how it's qualified
+			// (Substitute.For<T>(), NSubstitute.Substitute.For<T>(), global::NSubstitute.Substitute.For<T>(), aliases, etc.).
+			if (semanticModel?.GetSymbolInfo(invocation, cancellationToken).Symbol is IMethodSymbol methodSymbol &&
+			    methodSymbol.ContainingType?.Name == "Substitute" &&
+			    methodSymbol.ContainingType.ContainingNamespace?.ToDisplayString() == "NSubstitute")
 			{
 				return invocation;
 			}
@@ -155,6 +173,26 @@ public class NSubstituteCodeFixProvider() : AssertionCodeFixProvider(Rules.NSubs
 				.WithTrailingTrivia(existing.GetTrailingTrivia());
 		}
 
-		return directive.WithTrailingTrivia(SyntaxFactory.EndOfLine("\n"));
+		// No existing usings — emit a blank-line separator so the new using is followed by an empty line
+		// before the first member, matching standard C# layout.
+		string endOfLine = DetectLineEnding(compilationUnit);
+		return directive.WithTrailingTrivia(SyntaxFactory.EndOfLine(endOfLine), SyntaxFactory.EndOfLine(endOfLine));
+	}
+
+	private static string DetectLineEnding(SyntaxNode root)
+	{
+		foreach (SyntaxTrivia trivia in root.DescendantTrivia(descendIntoTrivia: true))
+		{
+			if (trivia.IsKind(SyntaxKind.EndOfLineTrivia))
+			{
+				string text = trivia.ToFullString();
+				if (text.Length > 0)
+				{
+					return text;
+				}
+			}
+		}
+
+		return "\n";
 	}
 }
